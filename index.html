@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#16a34a">
+  <title>Muscle Manager</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon.svg">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="app-header">
+    <h1>💪 Muscle Manager</h1>
+    <div id="header-timer" class="header-timer hidden" title="タイマー画面へ"></div>
+  </header>
+
+  <main>
+    <!-- ===== 記録 ===== -->
+    <section id="tab-log" class="tab active">
+      <div class="card">
+        <div class="row">
+          <label class="grow">日付
+            <input type="date" id="log-date">
+          </label>
+          <label class="grow">体重 (kg)
+            <input type="number" id="log-bodyweight" inputmode="decimal" step="0.1" min="0" placeholder="任意">
+          </label>
+        </div>
+      </div>
+
+      <form id="log-form" class="card">
+        <h2 id="log-form-title">トレーニングを記録</h2>
+        <label>メニュー
+          <select id="log-exercise" required></select>
+        </label>
+        <div id="log-prev" class="prev-info"></div>
+
+        <div class="sets-header">
+          <span>セット</span><span>重量 (kg)</span><span>回数</span><span></span>
+        </div>
+        <div id="log-sets"></div>
+        <div class="row">
+          <button type="button" id="btn-add-set" class="btn secondary grow">＋ セット追加</button>
+          <button type="button" id="btn-copy-set" class="btn secondary grow">前セットをコピー</button>
+        </div>
+
+        <div class="row">
+          <label class="grow">休憩時間 (秒)
+            <input type="number" id="log-rest" inputmode="numeric" min="0" step="5" value="90">
+          </label>
+          <label class="grow">RPE / きつさ
+            <select id="log-rpe">
+              <option value="">-</option>
+              <option>6</option><option>7</option><option>8</option><option>9</option><option>10</option>
+            </select>
+          </label>
+        </div>
+        <label>メモ
+          <input type="text" id="log-note" placeholder="フォーム、調子など">
+        </label>
+        <div class="row">
+          <button type="submit" class="btn primary grow" id="btn-save-log">保存</button>
+          <button type="button" class="btn ghost hidden" id="btn-cancel-edit">キャンセル</button>
+        </div>
+      </form>
+
+      <div class="card">
+        <h2>この日の記録</h2>
+        <div id="day-summary" class="summary"></div>
+        <div id="day-records"></div>
+      </div>
+    </section>
+
+    <!-- ===== タイマー ===== -->
+    <section id="tab-timer" class="tab">
+      <div class="card center">
+        <h2>休憩タイマー</h2>
+        <div id="rest-display" class="big-time">01:30</div>
+        <div class="progress"><div id="rest-progress"></div></div>
+        <div class="presets" id="rest-presets">
+          <button class="chip" data-sec="30">30秒</button>
+          <button class="chip" data-sec="60">1分</button>
+          <button class="chip" data-sec="90">1分30</button>
+          <button class="chip" data-sec="120">2分</button>
+          <button class="chip" data-sec="180">3分</button>
+          <button class="chip" data-sec="300">5分</button>
+        </div>
+        <div class="row">
+          <button class="btn secondary" id="rest-minus">−15秒</button>
+          <button class="btn primary grow" id="rest-start">スタート</button>
+          <button class="btn secondary" id="rest-plus">＋15秒</button>
+        </div>
+        <button class="btn ghost" id="rest-reset">リセット</button>
+        <label class="inline"><input type="checkbox" id="rest-sound" checked> 終了時に音とバイブ</label>
+      </div>
+
+      <div class="card center">
+        <h2>ストップウォッチ</h2>
+        <div id="sw-display" class="big-time">00:00.00</div>
+        <div class="row">
+          <button class="btn primary grow" id="sw-start">スタート</button>
+          <button class="btn secondary grow" id="sw-lap" disabled>ラップ</button>
+          <button class="btn ghost grow" id="sw-reset">リセット</button>
+        </div>
+        <ol id="sw-laps" class="laps"></ol>
+      </div>
+    </section>
+
+    <!-- ===== 履歴 ===== -->
+    <section id="tab-history" class="tab">
+      <div class="card">
+        <div class="cal-head">
+          <button class="btn ghost" id="cal-prev">‹</button>
+          <h2 id="cal-title"></h2>
+          <button class="btn ghost" id="cal-next">›</button>
+        </div>
+        <div id="calendar" class="calendar"></div>
+        <p class="hint">日付をタップするとその日の記録画面へ移動します</p>
+      </div>
+      <div class="card">
+        <div class="row">
+          <h2 class="grow">履歴一覧</h2>
+          <select id="history-filter"></select>
+        </div>
+        <div id="history-list"></div>
+      </div>
+    </section>
+
+    <!-- ===== 統計 ===== -->
+    <section id="tab-stats" class="tab">
+      <div class="card">
+        <h2>今週のまとめ</h2>
+        <div id="week-stats" class="stat-grid"></div>
+        <div id="part-volume"></div>
+      </div>
+      <div class="card">
+        <h2>自己ベスト (PR)</h2>
+        <div id="pr-table"></div>
+      </div>
+      <div class="card">
+        <div class="row">
+          <h2 class="grow">推移グラフ</h2>
+          <select id="chart-exercise"></select>
+        </div>
+        <div class="chip-row" id="chart-metric">
+          <button class="chip active" data-metric="max">最大重量</button>
+          <button class="chip" data-metric="e1rm">推定1RM</button>
+          <button class="chip" data-metric="volume">ボリューム</button>
+          <button class="chip" data-metric="bodyweight">体重</button>
+        </div>
+        <canvas id="chart" height="220"></canvas>
+      </div>
+      <div class="card">
+        <h2>1RM 計算機</h2>
+        <div class="row">
+          <label class="grow">重量 (kg)<input type="number" id="calc-weight" inputmode="decimal" step="0.5"></label>
+          <label class="grow">回数<input type="number" id="calc-reps" inputmode="numeric" min="1" max="30"></label>
+        </div>
+        <div id="calc-result"></div>
+      </div>
+    </section>
+
+    <!-- ===== メニュー ===== -->
+    <section id="tab-menu" class="tab">
+      <form id="ex-form" class="card">
+        <h2 id="ex-form-title">メニューを追加</h2>
+        <label>種目名<input type="text" id="ex-name" required maxlength="40" placeholder="例: ベンチプレス"></label>
+        <div class="row">
+          <label class="grow">部位
+            <select id="ex-part"></select>
+          </label>
+          <label class="grow">標準休憩 (秒)
+            <input type="number" id="ex-rest" inputmode="numeric" min="0" step="5" value="90">
+          </label>
+        </div>
+        <div class="row">
+          <label class="grow">目標重量 (kg)<input type="number" id="ex-target" inputmode="decimal" step="0.5" min="0" placeholder="任意"></label>
+        </div>
+        <div class="row">
+          <button type="submit" class="btn primary grow">保存</button>
+          <button type="button" class="btn ghost hidden" id="ex-cancel">キャンセル</button>
+        </div>
+      </form>
+      <div class="card">
+        <h2>メニュー一覧</h2>
+        <div id="ex-list"></div>
+      </div>
+      <div class="card">
+        <h2>データ管理</h2>
+        <div class="row wrap">
+          <button class="btn secondary grow" id="btn-export">バックアップ (JSON)</button>
+          <button class="btn secondary grow" id="btn-csv">CSV出力</button>
+          <label class="btn secondary grow file-btn">復元 (JSON)<input type="file" id="file-import" accept="application/json,.json" hidden></label>
+        </div>
+        <button class="btn danger" id="btn-reset">全データを削除</button>
+        <p class="hint">データはこの端末のブラウザ内に保存されます。機種変更前にはバックアップしてください。</p>
+      </div>
+    </section>
+  </main>
+
+  <nav class="tabbar">
+    <button data-tab="log" class="active"><span>📝</span>記録</button>
+    <button data-tab="timer"><span>⏱️</span>タイマー</button>
+    <button data-tab="history"><span>📅</span>履歴</button>
+    <button data-tab="stats"><span>📈</span>統計</button>
+    <button data-tab="menu"><span>🏋️</span>メニュー</button>
+  </nav>
+
+  <div id="toast" class="toast"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
