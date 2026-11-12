@@ -192,7 +192,8 @@
         <div class="row wrap">
           <button class="btn secondary grow" id="btn-export">バックアップ (JSON)</button>
           <button class="btn secondary grow" id="btn-csv">CSV出力</button>
-          <label class="btn secondary grow file-btn">復元 (JSON)<input type="file" id="file-import" accept="application/json,.json" hidden></label>
+          <label class="btn secondary grow file-btn">ファイルから復元<input type="file" id="file-import" accept="application/json,.json" hidden></label>
+          <button class="btn secondary grow" id="btn-paste-import">貼り付けて復元</button>
         </div>
         <button class="btn danger" id="btn-reset">全データを削除</button>
         <p class="hint">データはこの端末のブラウザ内に保存されます。機種変更前にはバックアップしてください。</p>
@@ -207,6 +208,18 @@
     <button data-tab="stats"><span>📈</span>統計</button>
     <button data-tab="menu"><span>🏋️</span>メニュー</button>
   </nav>
+
+  <div id="dialog" class="modal" hidden>
+    <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="dialog-msg">
+      <p id="dialog-msg"></p>
+      <textarea id="dialog-text" rows="8" spellcheck="false" hidden></textarea>
+      <div class="row wrap">
+        <button type="button" class="btn ghost grow" id="dialog-cancel">キャンセル</button>
+        <button type="button" class="btn secondary grow" id="dialog-extra" hidden></button>
+        <button type="button" class="btn primary grow" id="dialog-ok">OK</button>
+      </div>
+    </div>
+  </div>
 
   <div id="toast" class="toast"></div>
 

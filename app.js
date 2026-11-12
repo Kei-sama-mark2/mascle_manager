@@ -91,11 +91,44 @@ function saveJSON(key, value) {
   catch { toast('保存に失敗しました（ストレージ容量を確認してください）'); }
 }
 
+/* ---------- in-page dialog (confirm() が使えない環境でも動く) ---------- */
+function openDialog({ message, okLabel = 'OK', cancelLabel = 'キャンセル', danger = false, text = null, extra = null }) {
+  return new Promise((resolve) => {
+    const wrap = $('#dialog');
+    $('#dialog-msg').textContent = message;
+    const ta = $('#dialog-text');
+    ta.hidden = text == null;
+    ta.value = text ?? '';
+    const ok = $('#dialog-ok'), cancel = $('#dialog-cancel'), ex = $('#dialog-extra');
+    ok.textContent = okLabel;
+    ok.className = `btn grow ${danger ? 'danger-fill' : 'primary'}`;
+    cancel.textContent = cancelLabel;
+    cancel.hidden = !cancelLabel;
+    ex.hidden = !extra;
+    if (extra) ex.textContent = extra.label;
+    const close = (v) => {
+      wrap.hidden = true;
+      ok.onclick = cancel.onclick = ex.onclick = wrap.onclick = null;
+      resolve(v);
+    };
+    ok.onclick = () => close(true);
+    cancel.onclick = () => close(false);
+    ex.onclick = () => extra?.onClick();
+    wrap.onclick = (e) => { if (e.target === wrap) close(false); };
+    wrap.hidden = false;
+    (text != null ? ta : ok).focus();
+  });
+}
+const askConfirm = (message, okLabel = '削除') => openDialog({ message, okLabel, danger: true });
+
 /* ---------- data ---------- */
+function defaultExercises() {
+  return DEFAULT_EXERCISES.map(([name, part, rest]) => ({ id: uid(), name, part, rest, target: null }));
+}
 let db = loadJSON(STORAGE_KEY, null);
 if (!db || !Array.isArray(db.exercises)) {
   db = {
-    exercises: DEFAULT_EXERCISES.map(([name, part, rest]) => ({ id: uid(), name, part, rest, target: null })),
+    exercises: defaultExercises(),
     records: [],
     bodyweights: {},
   };
@@ -298,7 +331,7 @@ function clearForm() {
   $('#log-rpe').value = '';
   const ex = exById(logExercise.value);
   $('#log-rest').value = ex?.rest ?? 90;
-  localStorage.removeItem(DRAFT_KEY);
+  try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
   renderPrevInfo();
 }
 
@@ -323,8 +356,8 @@ function startEdit(id) {
   $('#log-form').scrollIntoView({ behavior: 'smooth' });
 }
 
-function deleteRecord(id) {
-  if (!confirm('この記録を削除しますか？')) return;
+async function deleteRecord(id) {
+  if (!(await askConfirm('この記録を削除しますか？'))) return;
   db.records = db.records.filter((r) => r.id !== id);
   persist();
   if (editingId === id) clearForm();
@@ -872,11 +905,11 @@ function renderExerciseList() {
     $('#ex-cancel').classList.remove('hidden');
     $('#ex-form').scrollIntoView({ behavior: 'smooth' });
   }));
-  box.querySelectorAll('[data-exdel]').forEach((b) => b.addEventListener('click', () => {
+  box.querySelectorAll('[data-exdel]').forEach((b) => b.addEventListener('click', async () => {
     const id = b.dataset.exdel;
     const n = counts[id] || 0;
     const msg = n ? `「${exName(id)}」と関連する記録${n}件を削除しますか？` : `「${exName(id)}」を削除しますか？`;
-    if (!confirm(msg)) return;
+    if (!(await askConfirm(msg))) return;
     db.exercises = db.exercises.filter((e) => e.id !== id);
     db.records = db.records.filter((r) => r.exerciseId !== id);
     persist();
@@ -916,7 +949,7 @@ $('#ex-form').addEventListener('submit', (e) => {
 });
 
 /* データ管理 */
-function download(filename, content, type) {
+function tryDownload(filename, content, type) {
   const blob = new Blob([content], { type });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -926,8 +959,23 @@ function download(filename, content, type) {
   a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
+/** 内容を表示してコピーできるようにし、ファイル保存も試せるようにする */
+function showExport(message, filename, content, type) {
+  openDialog({
+    message,
+    text: content,
+    okLabel: 'コピー',
+    cancelLabel: '閉じる',
+    extra: { label: 'ファイル保存', onClick: () => tryDownload(filename, content, type) },
+  }).then(async (ok) => {
+    if (!ok) return;
+    try { await navigator.clipboard.writeText(content); toast('コピーしました'); }
+    catch { toast('コピーできませんでした。テキストを長押しで選択してください'); }
+  });
+}
 $('#btn-export').addEventListener('click', () => {
-  download(`muscle-manager-${todayStr()}.json`, JSON.stringify({ app: 'muscle-manager', version: 1, ...db }, null, 2), 'application/json');
+  showExport('バックアップデータです。コピーしてメモ等に保存するか、ファイル保存してください。',
+    `muscle-manager-${todayStr()}.json`, JSON.stringify({ app: 'muscle-manager', version: 1, ...db }, null, 2), 'application/json');
 });
 $('#btn-csv').addEventListener('click', () => {
   const q = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
@@ -936,7 +984,8 @@ $('#btn-csv').addEventListener('click', () => {
     const ex = exById(r.exerciseId);
     r.sets.forEach((s, i) => lines.push([r.date, ex?.name, ex?.part, i + 1, s.w, s.r, r.rest, r.rpe, r.note, db.bodyweights[r.date]].map(q).join(',')));
   }
-  download(`muscle-manager-${todayStr()}.csv`, '﻿' + lines.join('\r\n'), 'text/csv');
+  showExport('CSV データです（Excel やスプレッドシートに貼り付けできます）。',
+    `muscle-manager-${todayStr()}.csv`, '\uFEFF' + lines.join('\r\n'), 'text/csv');
 });
 $('#file-import').addEventListener('change', async (e) => {
   const file = e.target.files[0];
@@ -947,21 +996,42 @@ $('#file-import').addEventListener('change', async (e) => {
     if (!Array.isArray(data.exercises) || !Array.isArray(data.records)) throw new Error('invalid');
     const valid = data.records.every((r) => r && typeof r.date === 'string' && Array.isArray(r.sets));
     if (!valid) throw new Error('invalid');
-    if (!confirm(`メニュー${data.exercises.length}件・記録${data.records.length}件を復元します。現在のデータは上書きされます。よろしいですか？`)) return;
-    db = { exercises: data.exercises, records: data.records, bodyweights: data.bodyweights || {} };
-    persist();
-    refreshAll();
-    toast('復元しました');
+    await restoreFrom(data);
   } catch {
     toast('ファイルの形式が正しくありません');
   }
 });
-$('#btn-reset').addEventListener('click', () => {
-  if (!confirm('すべての記録とメニューを削除します。元に戻せません。よろしいですか？')) return;
-  if (!confirm('本当に削除しますか？')) return;
-  localStorage.removeItem(STORAGE_KEY);
-  localStorage.removeItem(DRAFT_KEY);
-  location.reload();
+async function restoreFrom(data) {
+  if (!Array.isArray(data?.exercises) || !Array.isArray(data?.records)
+    || !data.records.every((r) => r && typeof r.date === 'string' && Array.isArray(r.sets))) {
+    toast('データの形式が正しくありません');
+    return;
+  }
+  const ok = await openDialog({
+    message: `メニュー${data.exercises.length}件・記録${data.records.length}件を復元します。現在のデータは上書きされます。`,
+    okLabel: '復元する',
+    danger: true,
+  });
+  if (!ok) return;
+  db = { exercises: data.exercises, records: data.records, bodyweights: data.bodyweights || {} };
+  persist();
+  refreshAll();
+  toast('復元しました');
+}
+$('#btn-paste-import').addEventListener('click', async () => {
+  const ok = await openDialog({ message: 'バックアップ (JSON) のテキストを貼り付けてください。', text: '', okLabel: '次へ' });
+  if (!ok) return;
+  try { await restoreFrom(JSON.parse($('#dialog-text').value)); }
+  catch { toast('データの形式が正しくありません'); }
+});
+$('#btn-reset').addEventListener('click', async () => {
+  if (!(await askConfirm('すべての記録とメニューを削除します。元に戻せません。よろしいですか？', 'すべて削除'))) return;
+  db = { exercises: defaultExercises(), records: [], bodyweights: {} };
+  persist();
+  try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
+  clearForm();
+  refreshAll();
+  toast('全データを削除しました');
 });
 
 /* =========================================================

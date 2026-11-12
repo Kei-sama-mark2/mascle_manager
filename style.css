@@ -12,7 +12,8 @@
   --radius: 12px;
 }
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
     --bg: #111418;
     --card: #1b1f25;
     --text: #e6e8eb;
@@ -20,6 +21,15 @@
     --border: #2c323a;
     --secondary: #1f3326;
   }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #111418;
+  --card: #1b1f25;
+  --text: #e6e8eb;
+  --muted: #9aa3ad;
+  --border: #2c323a;
+  --secondary: #1f3326;
 }
 
 * { box-sizing: border-box; }
@@ -72,6 +82,7 @@ input[type="checkbox"] { width: auto; display: inline; margin: 0; }
 .row > h2 { white-space: nowrap; margin: 0; align-self: center; }
 .row > select { width: auto; max-width: 60%; margin: 0; }
 .hidden { display: none !important; }
+[hidden] { display: none !important; }
 
 .btn {
   font-size: 15px; font-weight: 600; padding: 11px 14px; margin: 4px 0;
@@ -202,3 +213,20 @@ canvas { width: 100%; display: block; }
   font-size: 14px; opacity: 0; pointer-events: none; transition: opacity .25s; z-index: 20; white-space: nowrap;
 }
 .toast.show { opacity: 1; }
+
+/* dialog */
+.modal {
+  position: fixed; inset: 0; z-index: 30; background: rgba(0,0,0,.45);
+  display: flex; align-items: center; justify-content: center; padding: 16px;
+}
+.modal-box {
+  background: var(--card); color: var(--text); border-radius: var(--radius);
+  width: 100%; max-width: 420px; padding: 16px; box-shadow: 0 10px 30px rgba(0,0,0,.25);
+}
+.modal-box p { margin: 0 0 12px; line-height: 1.6; }
+.modal-box textarea {
+  width: 100%; font: 12px ui-monospace, monospace; padding: 8px; margin-bottom: 8px;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); resize: vertical;
+}
+.btn.danger-fill { background: var(--danger); color: #fff; }
+.btn:focus-visible, .chip:focus-visible, .tabbar button:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
