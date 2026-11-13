@@ -32,9 +32,12 @@
 
       <form id="log-form" class="card">
         <h2 id="log-form-title">トレーニングを記録</h2>
-        <label>メニュー
-          <select id="log-exercise" required></select>
-        </label>
+        <div class="row">
+          <label class="grow">種目
+            <select id="log-exercise" required></select>
+          </label>
+          <button type="button" class="btn secondary howto-btn" id="btn-howto">📖 やり方</button>
+        </div>
         <div id="log-prev" class="prev-info"></div>
 
         <div class="sets-header">
@@ -132,6 +135,7 @@
     <section id="tab-stats" class="tab">
       <div class="card">
         <h2>今週のまとめ</h2>
+        <p class="hint" style="margin:-6px 0 10px">月曜〜日曜の集計</p>
         <div id="week-stats" class="stat-grid"></div>
         <div id="part-volume"></div>
       </div>
@@ -162,33 +166,31 @@
       </div>
     </section>
 
-    <!-- ===== メニュー ===== -->
+    <!-- ===== 種目 ===== -->
     <section id="tab-menu" class="tab">
-      <form id="ex-form" class="card">
-        <h2 id="ex-form-title">メニューを追加</h2>
-        <label>種目名<input type="text" id="ex-name" required maxlength="40" placeholder="例: ベンチプレス"></label>
-        <div class="row">
-          <label class="grow">部位
-            <select id="ex-part"></select>
-          </label>
-          <label class="grow">標準休憩 (秒)
-            <input type="number" id="ex-rest" inputmode="numeric" min="0" step="5" value="90">
-          </label>
-        </div>
-        <div class="row">
-          <label class="grow">目標重量 (kg)<input type="number" id="ex-target" inputmode="decimal" step="0.5" min="0" placeholder="任意"></label>
-        </div>
-        <div class="row">
-          <button type="submit" class="btn primary grow">保存</button>
-          <button type="button" class="btn ghost hidden" id="ex-cancel">キャンセル</button>
-        </div>
-      </form>
-      <div class="card">
-        <h2>メニュー一覧</h2>
-        <div id="ex-list"></div>
+      <div class="guide-filter">
+        <input type="search" id="guide-search" placeholder="種目名・部位で検索（例: ベンチ、上腕三頭筋）" aria-label="種目を検索">
+        <div class="chip-row scroll" id="guide-groups"></div>
+        <div class="chip-row scroll sub" id="guide-muscles" hidden></div>
       </div>
-      <div class="card">
-        <h2>データ管理</h2>
+      <p class="hint guide-hint"><span id="guide-count"></span>　☆を押すと「マイメニュー」に追加され、記録画面で選べるようになります</p>
+      <div id="guide-list" class="guide-list"></div>
+
+      <details class="card fold">
+        <summary>オリジナル種目を追加</summary>
+        <form id="ex-form">
+          <label>種目名<input type="text" id="ex-name" required maxlength="40" placeholder="例: ケーブルカール"></label>
+          <label>メインで鍛える部位<select id="ex-muscle"></select></label>
+          <div class="row">
+            <label class="grow">標準の休憩 (秒)<input type="number" id="ex-rest" inputmode="numeric" min="0" step="5" value="90"></label>
+            <label class="grow">目標重量 (kg)<input type="number" id="ex-target" inputmode="decimal" step="0.5" min="0" placeholder="任意"></label>
+          </div>
+          <button type="submit" class="btn primary">追加する</button>
+        </form>
+      </details>
+
+      <details class="card fold">
+        <summary>データ管理（バックアップ・復元）</summary>
         <div class="row wrap">
           <button class="btn secondary grow" id="btn-export">バックアップ (JSON)</button>
           <button class="btn secondary grow" id="btn-csv">CSV出力</button>
@@ -197,7 +199,7 @@
         </div>
         <button class="btn danger" id="btn-reset">全データを削除</button>
         <p class="hint">データはこの端末のブラウザ内に保存されます。機種変更前にはバックアップしてください。</p>
-      </div>
+      </details>
     </section>
   </main>
 
@@ -206,8 +208,19 @@
     <button data-tab="timer"><span>⏱️</span>タイマー</button>
     <button data-tab="history"><span>📅</span>履歴</button>
     <button data-tab="stats"><span>📈</span>統計</button>
-    <button data-tab="menu"><span>🏋️</span>メニュー</button>
+    <button data-tab="menu"><span>🏋️</span>種目</button>
   </nav>
+
+  <div id="sheet" class="sheet" hidden>
+    <div class="sheet-box" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
+      <div class="sheet-head">
+        <button type="button" class="icon-btn" id="sheet-close" aria-label="閉じる">✕</button>
+        <h2 id="sheet-title"></h2>
+        <button type="button" class="star-btn" id="sheet-star"></button>
+      </div>
+      <div class="sheet-body" id="sheet-body"></div>
+    </div>
+  </div>
 
   <div id="dialog" class="modal" hidden>
     <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="dialog-msg">
@@ -223,6 +236,8 @@
 
   <div id="toast" class="toast"></div>
 
+  <script src="exercises.js"></script>
+  <script src="figure.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

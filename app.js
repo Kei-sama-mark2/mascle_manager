@@ -10,21 +10,13 @@ const DRAFT_KEY = 'mm-draft-v1';
 const SW_KEY = 'mm-stopwatch-v1';
 const REST_KEY = 'mm-rest-v1';
 
-const PARTS = ['胸', '背中', '肩', '腕', '脚', '腹', '全身', 'その他'];
-
-const DEFAULT_EXERCISES = [
-  ['ベンチプレス', '胸', 120],
-  ['ダンベルフライ', '胸', 90],
-  ['スクワット', '脚', 150],
-  ['レッグプレス', '脚', 120],
-  ['デッドリフト', '背中', 180],
-  ['ラットプルダウン', '背中', 90],
-  ['ショルダープレス', '肩', 90],
-  ['サイドレイズ', '肩', 60],
-  ['バーベルカール', '腕', 60],
-  ['トライセプスプレスダウン', '腕', 60],
-  ['クランチ', '腹', 45],
+/** 初回起動時に「マイメニュー」に入っている種目 */
+const DEFAULT_MENU = [
+  'bench_press', 'incline_db_press', 'db_fly', 'squat', 'leg_press', 'deadlift', 'lat_pulldown',
+  'db_shoulder_press', 'lateral_raise', 'bb_curl', 'pushdown', 'crunch',
 ];
+/** 旧バージョン（部位が大まかだった頃）の部位 → 筋肉 */
+const OLD_PART_MAP = { 胸: 'chest_mid', 背中: 'lats', 肩: 'delt_side', 腕: 'biceps', 脚: 'quads', 腹: 'abs', 全身: 'fullbody', その他: 'other' };
 
 /* ---------- utils ---------- */
 const $ = (sel) => document.querySelector(sel);
@@ -122,24 +114,46 @@ function openDialog({ message, okLabel = 'OK', cancelLabel = 'キャンセル', 
 const askConfirm = (message, okLabel = '削除') => openDialog({ message, okLabel, danger: true });
 
 /* ---------- data ---------- */
-function defaultExercises() {
-  return DEFAULT_EXERCISES.map(([name, part, rest]) => ({ id: uid(), name, part, rest, target: null }));
+function libEntry(libId) {
+  const L = LIBRARY_BY_ID[libId];
+  return { id: uid(), lib: L.id, name: L.name, muscle: L.muscle, rest: L.rest ?? 90, target: null };
 }
+function defaultExercises() { return DEFAULT_MENU.map(libEntry); }
+
+/** 古いデータ形式を新しい形式（筋肉・種目ライブラリとの紐づけ）に変換 */
+function migrate(d) {
+  d.records ||= [];
+  d.bodyweights ||= {};
+  const byName = {};
+  for (const L of LIBRARY) for (const n of [L.name, ...(L.aliases || [])]) byName[n] = L;
+  for (const ex of d.exercises) {
+    if (!ex.lib && byName[ex.name] && !d.exercises.some((o) => o !== ex && o.lib === byName[ex.name].id)) ex.lib = byName[ex.name].id;
+    if (ex.lib && !LIBRARY_BY_ID[ex.lib]) delete ex.lib;
+    if (!ex.muscle || !MUSCLE_BY_ID[ex.muscle]) {
+      ex.muscle = ex.lib ? LIBRARY_BY_ID[ex.lib].muscle : (OLD_PART_MAP[ex.part] ?? 'other');
+    }
+    delete ex.part;
+  }
+  d.version = 2;
+  return d;
+}
+
 let db = loadJSON(STORAGE_KEY, null);
 if (!db || !Array.isArray(db.exercises)) {
-  db = {
-    exercises: defaultExercises(),
-    records: [],
-    bodyweights: {},
-  };
-  saveJSON(STORAGE_KEY, db);
+  db = { exercises: defaultExercises(), records: [], bodyweights: {} };
 }
-db.records ||= [];
-db.bodyweights ||= {};
+migrate(db);
+saveJSON(STORAGE_KEY, db);
 
 function persist() { saveJSON(STORAGE_KEY, db); }
 function exById(id) { return db.exercises.find((e) => e.id === id); }
 function exName(id) { return exById(id)?.name ?? '(削除済みメニュー)'; }
+const muscleName = (m) => MUSCLE_BY_ID[m]?.name ?? 'その他';
+const groupOf = (ex) => MUSCLE_BY_ID[ex?.muscle]?.group ?? 'other';
+const libOf = (ex) => (ex?.lib ? LIBRARY_BY_ID[ex.lib] : null);
+const myMenu = () => db.exercises.filter((e) => !e.hidden);
+const MUSCLE_ORDER = Object.fromEntries(MUSCLES.map((m, i) => [m.id, i]));
+const byMuscle = (a, b) => ((MUSCLE_ORDER[a.muscle] ?? 99) - (MUSCLE_ORDER[b.muscle] ?? 99)) || a.name.localeCompare(b.name, 'ja');
 
 function recordStats(rec) {
   let max = 0, maxReps = 0, volume = 0, best1rm = 0, reps = 0;
@@ -190,7 +204,7 @@ function showTab(name) {
   $$('.tabbar button').forEach((b) => b.classList.toggle('active', b.dataset.tab === name));
   if (name === 'history') renderHistory();
   if (name === 'stats') renderStats();
-  if (name === 'menu') renderExerciseList();
+  if (name === 'menu') renderGuide();
   window.scrollTo(0, 0);
 }
 $$('.tabbar button').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.tab)));
@@ -204,14 +218,22 @@ const logExercise = $('#log-exercise');
 const setsBox = $('#log-sets');
 let editingId = null;
 
-function fillExerciseSelect(select, { includeAll = false } = {}) {
+/**
+ * 種目のセレクトボックスを部位ごとに作る
+ * includeAll: 「すべて」を先頭に入れ、記録のある非表示種目も含める（履歴の絞り込み用）
+ * include: マイメニュー外でも必ず含める種目ID（編集中の記録など）
+ */
+function fillExerciseSelect(select, { includeAll = false, include = null } = {}) {
   const current = select.value;
-  const groups = PARTS.map((p) => {
-    const items = db.exercises.filter((e) => e.part === p);
+  const withRecords = new Set(db.records.map((r) => r.exerciseId));
+  const list = db.exercises.filter((e) => !e.hidden || e.id === include || (includeAll && withRecords.has(e.id)));
+  const groups = GROUPS.map((g) => {
+    const items = list.filter((e) => groupOf(e) === g.id).sort(byMuscle);
     if (!items.length) return '';
-    return `<optgroup label="${esc(p)}">${items.map((e) => `<option value="${e.id}">${esc(e.name)}</option>`).join('')}</optgroup>`;
+    return `<optgroup label="${esc(g.name)}">${items.map((e) => `<option value="${e.id}">${esc(e.name)}</option>`).join('')}</optgroup>`;
   }).join('');
-  select.innerHTML = (includeAll ? '<option value="">すべてのメニュー</option>' : '') + groups;
+  select.innerHTML = (includeAll ? '<option value="">すべての種目</option>' : '')
+    + (groups || '<option value="">種目タブでメニューを追加してください</option>');
   if ([...select.options].some((o) => o.value === current)) select.value = current;
 }
 
@@ -268,13 +290,17 @@ function renderPrevInfo() {
   const best = bestFor(id, editingId);
   const ex = exById(id);
   const parts = [];
+  if (ex) {
+    const L = libOf(ex);
+    parts.push(`<div><span class="part-tag">${esc(muscleName(ex.muscle))}</span>${(L?.sub || []).map((m) => `<span class="part-tag soft">${esc(muscleName(m))}</span>`).join('')}</div>`);
+  }
   if (last) {
     parts.push(`<div>前回 (${fmtDate(last.date)}): ${last.sets.map((s) => `${fmtNum(s.w)}kg×${s.r}`).join(', ')}
       <button type="button" class="btn small secondary" id="btn-copy-last">前回をコピー</button></div>`);
   }
   if (best) parts.push(`<div>自己ベスト: <b>${fmtNum(best.max)}kg × ${best.maxReps}回</b> (${fmtDate(best.date)}) / 推定1RM ${fmtNum(bestFor1rm(id))}kg</div>`);
   if (ex?.target) parts.push(`<div>目標: ${fmtNum(ex.target)}kg ${best && best.max >= ex.target ? '✅ 達成済み' : best ? `(あと ${fmtNum(ex.target - best.max)}kg)` : ''}</div>`);
-  if (!last) parts.push('<div>この種目の初めての記録です</div>');
+  if (!last && ex) parts.push('<div>この種目の初めての記録です</div>');
   box.innerHTML = parts.join('');
   $('#btn-copy-last')?.addEventListener('click', () => {
     setsBox.innerHTML = '';
@@ -342,6 +368,7 @@ function startEdit(id) {
   showTab('log');
   logDate.value = rec.date;
   renderBodyweight();
+  fillExerciseSelect(logExercise, { include: rec.exerciseId });
   logExercise.value = rec.exerciseId;
   setsBox.innerHTML = '';
   rec.sets.forEach((s) => addSetRow(s.w, s.r));
@@ -448,7 +475,7 @@ function recordHtml(rec, prIds, { showDate = false } = {}) {
     <div class="record">
       <div class="record-head">
         <div>
-          ${ex ? `<span class="part-tag">${esc(ex.part)}</span>` : ''}
+          ${ex ? `<span class="part-tag">${esc(muscleName(ex.muscle))}</span>` : ''}
           <span class="record-title">${esc(exName(rec.exerciseId))}</span>
           ${prIds.has(rec.id) ? '<span class="pr-badge">PR</span>' : ''}
           ${showDate ? `<span class="record-meta"> ${fmtDate(rec.date)}</span>` : ''}
@@ -727,26 +754,41 @@ function renderStats() {
   const week = db.records.filter((r) => r.date >= ws && r.date <= we);
   const days = new Set(week.map((r) => r.date)).size;
   let sets = 0, volume = 0;
-  const partSets = {};
+  const muscleSets = {};
   week.forEach((r) => {
     const st = recordStats(r);
     sets += st.sets; volume += st.volume;
-    const part = exById(r.exerciseId)?.part ?? 'その他';
-    partSets[part] = (partSets[part] || 0) + st.sets;
+    const m = exById(r.exerciseId)?.muscle ?? 'other';
+    muscleSets[m] = (muscleSets[m] || 0) + st.sets;
   });
   $('#week-stats').innerHTML = `
     <div class="stat"><b>${days}</b><span>トレーニング日数</span></div>
     <div class="stat"><b>${sets}</b><span>総セット数</span></div>
     <div class="stat"><b>${volume >= 10000 ? `${fmtNum(volume / 1000)}t` : `${fmtNum(volume)}kg`}</b><span>総ボリューム</span></div>`;
-  const maxPart = Math.max(1, ...Object.values(partSets));
-  $('#part-volume').innerHTML = `<div class="hint" style="margin-bottom:6px">部位別セット数（今週）</div>` +
-    PARTS.map((p) => `
-      <div class="bar-row"><span>${p}</span>
-        <div><div class="bar" style="width:${((partSets[p] || 0) / maxPart) * 100}%"></div></div>
-        <span class="val">${partSets[p] || 0}セット</span></div>`).join('');
+  const maxSets = Math.max(1, ...Object.values(muscleSets));
+  const heat = Object.fromEntries(Object.entries(muscleSets).map(([m, n]) => [m, n / maxSets]));
+  if (muscleSets.fullbody) MUSCLES.forEach((m) => { heat[m.id] = Math.max(heat[m.id] || 0, heat.fullbody); });
+  const untrained = GROUPS.filter((g) => g.id !== 'other' && !MUSCLES.some((m) => m.group === g.id && muscleSets[m.id]));
+  const rows = GROUPS.map((g) => {
+    const ms = MUSCLES.filter((m) => m.group === g.id && muscleSets[m.id]);
+    if (!ms.length) return '';
+    return `<div class="bar-group">${esc(g.name)}</div>` + ms.map((m) => `
+      <div class="bar-row"><span>${esc(m.name)}</span>
+        <div><div class="bar" style="width:${(muscleSets[m.id] / maxSets) * 100}%"></div></div>
+        <span class="val">${muscleSets[m.id]}セット</span></div>`).join('');
+  }).join('');
+  $('#part-volume').innerHTML = `
+    <div class="week-map">
+      <div class="week-map-fig">${FigureKit.muscleMap({ heat })}</div>
+      <div class="week-map-list">
+        <div class="hint">部位別セット数（今週・メインの部位で集計）</div>
+        ${rows || '<div class="empty">今週の記録はまだありません</div>'}
+        ${untrained.length && week.length ? `<p class="hint">まだ鍛えていない部位: <b>${untrained.map((g) => esc(g.name)).join('・')}</b></p>` : ''}
+      </div>
+    </div>`;
 
   // PR一覧
-  const rows = db.exercises.map((ex) => {
+  const prRows = [...db.exercises].sort(byMuscle).map((ex) => {
     const best = bestFor(ex.id);
     if (!best) return null;
     const oneRm = bestFor1rm(ex.id);
@@ -757,11 +799,17 @@ function renderStats() {
       <td class="num">${fmtNum(oneRm)}kg</td>
       <td class="num">${fmtDate(best.date)}</td></tr>`;
   }).filter(Boolean);
-  $('#pr-table').innerHTML = rows.length
-    ? `<table><thead><tr><th>種目</th><th class="num">最大重量</th><th class="num">推定1RM</th><th class="num">日付</th></tr></thead><tbody>${rows.join('')}</tbody></table>`
+  $('#pr-table').innerHTML = prRows.length
+    ? `<div class="table-wrap"><table><thead><tr><th>種目</th><th class="num">最大重量</th><th class="num">推定1RM</th><th class="num">日付</th></tr></thead><tbody>${prRows.join('')}</tbody></table></div>`
     : '<div class="empty">記録するとここに自己ベストが表示されます</div>';
 
-  fillExerciseSelect($('#chart-exercise'));
+  fillExerciseSelect($('#chart-exercise'), { includeAll: true });
+  const chartSel = $('#chart-exercise');
+  chartSel.options[0]?.value === '' && chartSel.options[0].remove();
+  if (!chartSel.value || !db.records.some((r) => r.exerciseId === chartSel.value)) {
+    const withRec = sortedRecords().reverse().find((r) => [...chartSel.options].some((o) => o.value === r.exerciseId));
+    if (withRec) chartSel.value = withRec.exerciseId;
+  }
   drawChart();
 }
 
@@ -862,90 +910,324 @@ $('#calc-weight').addEventListener('input', renderCalc);
 $('#calc-reps').addEventListener('input', renderCalc);
 
 /* =========================================================
- *  メニュータブ
+ *  種目タブ（種目ガイド＆マイメニュー）
  * ========================================================= */
-let editingExId = null;
-$('#ex-part').innerHTML = PARTS.map((p) => `<option>${p}</option>`).join('');
+const guide = { group: 'all', muscle: null, query: '' };
+const toKata = (s) => s.replace(/[ぁ-ゖ]/g, (c) => String.fromCharCode(c.charCodeAt(0) + 0x60));
+const norm = (s) => toKata(String(s).toLowerCase()).replace(/[\s・（）()ー-]/g, '');
 
-function renderExerciseList() {
-  const box = $('#ex-list');
-  const counts = {};
+/** ライブラリの種目と、オリジナル種目をまとめた一覧 */
+function guideItems() {
+  const items = LIBRARY.map((L) => {
+    const ex = db.exercises.find((e) => e.lib === L.id) || null;
+    return { key: `lib:${L.id}`, L, ex, name: ex?.name ?? L.name, muscle: L.muscle, sub: L.sub || [], equip: L.equip, inMenu: !!ex && !ex.hidden };
+  });
+  for (const ex of db.exercises) {
+    if (ex.lib) continue;
+    items.push({ key: `ex:${ex.id}`, L: null, ex, name: ex.name, muscle: ex.muscle, sub: [], equip: 'オリジナル', inMenu: !ex.hidden });
+  }
+  return items;
+}
+function itemByKey(key) { return guideItems().find((i) => i.key === key); }
+function itemKeyOf(ex) { return ex.lib ? `lib:${ex.lib}` : `ex:${ex.id}`; }
+
+function renderGuideFilters() {
+  const counts = { my: myMenu().length };
+  const groupChips = [['all', 'すべて'], ['my', `★ マイメニュー (${counts.my})`], ...GROUPS.filter((g) => g.id !== 'other').map((g) => [g.id, g.name])];
+  $('#guide-groups').innerHTML = groupChips.map(([id, label]) =>
+    `<button class="chip${guide.group === id ? ' active' : ''}" data-group="${id}">${esc(label)}</button>`).join('');
+  const sub = GROUP_BY_ID[guide.group] ? MUSCLES.filter((m) => m.group === guide.group) : [];
+  $('#guide-muscles').innerHTML = sub.length
+    ? [`<button class="chip small${!guide.muscle ? ' active' : ''}" data-muscle="">${esc(GROUP_BY_ID[guide.group].name)}すべて</button>`,
+      ...sub.map((m) => `<button class="chip small${guide.muscle === m.id ? ' active' : ''}" data-muscle="${m.id}">${esc(m.name)}</button>`)].join('')
+    : '';
+  $('#guide-muscles').hidden = !sub.length;
+}
+
+function renderGuide() {
+  renderGuideFilters();
+  const q = norm(guide.query);
+  const counts = {}, best = {};
   db.records.forEach((r) => { counts[r.exerciseId] = (counts[r.exerciseId] || 0) + 1; });
-  if (!db.exercises.length) { box.innerHTML = '<div class="empty">メニューがありません</div>'; return; }
-  box.innerHTML = PARTS.map((p) => {
-    const items = db.exercises.filter((e) => e.part === p);
-    if (!items.length) return '';
-    return `<div class="date-head">${p}</div>` + items.map((e) => {
-      const best = bestFor(e.id);
-      return `<div class="record">
-        <div class="record-head">
-          <div><span class="record-title">${esc(e.name)}</span></div>
-          <div class="record-actions">
-            <button class="btn small ghost" data-exedit="${e.id}">編集</button>
-            <button class="btn small ghost" data-exdel="${e.id}">削除</button>
-          </div>
-        </div>
-        <div class="record-meta">
-          標準休憩 ${fmtSec(e.rest ?? 90)}
-          ${e.target ? ` / 目標 ${fmtNum(e.target)}kg` : ''}
-          ${best ? ` / 最大 ${fmtNum(best.max)}kg` : ''}
-          / 記録 ${counts[e.id] || 0}件
-        </div>
-      </div>`;
-    }).join('');
+  const items = guideItems().filter((it) => {
+    if (guide.group === 'my' && !it.inMenu) return false;
+    if (GROUP_BY_ID[guide.group] && MUSCLE_BY_ID[it.muscle]?.group !== guide.group) return false;
+    if (guide.muscle && it.muscle !== guide.muscle && !it.sub.includes(guide.muscle)) return false;
+    if (q) {
+      const hay = norm([it.name, it.L?.name, ...(it.L?.aliases || []), muscleName(it.muscle), ...it.sub.map(muscleName), it.equip].join(' '));
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+  // メイン部位で指定した筋肉に効く種目を先に
+  items.sort((a, b) => {
+    if (guide.muscle) {
+      const pa = a.muscle === guide.muscle ? 0 : 1, pb = b.muscle === guide.muscle ? 0 : 1;
+      if (pa !== pb) return pa - pb;
+    }
+    return byMuscle(a, b);
+  });
+  $('#guide-count').textContent = `${items.length}種目`;
+  const box = $('#guide-list');
+  if (!items.length) {
+    box.innerHTML = `<div class="empty">${guide.group === 'my' ? 'マイメニューは空です。★を押して種目を追加しましょう' : '該当する種目がありません'}</div>`;
+    return;
+  }
+  box.innerHTML = items.map((it) => {
+    const n = it.ex ? counts[it.ex.id] || 0 : 0;
+    if (it.ex && n) best[it.ex.id] = bestFor(it.ex.id);
+    const b = it.ex ? best[it.ex.id] : null;
+    const thumb = it.L ? FigureKit.staticSVG(it.L, 'b', 'fig-thumb') : `<span class="thumb-custom">${esc(it.name.slice(0, 1))}</span>`;
+    return `<div class="ex-item${it.inMenu ? ' in-menu' : ''}">
+      <button class="ex-open" data-open="${it.key}">
+        <span class="ex-thumb">${thumb}</span>
+        <span class="ex-info">
+          <span class="ex-name">${esc(it.name)}</span>
+          <span class="ex-tags"><span class="mtag main">${esc(muscleName(it.muscle))}</span>${it.sub.slice(0, 2).map((m) => `<span class="mtag">${esc(muscleName(m))}</span>`).join('')}</span>
+          <span class="ex-meta">${esc(it.equip)}${b ? ` ・ 最大 ${fmtNum(b.max)}kg` : ''}${n ? ` ・ 記録${n}件` : ''}</span>
+        </span>
+      </button>
+      <button class="star-btn" data-star="${it.key}" aria-pressed="${it.inMenu}" aria-label="${it.inMenu ? 'マイメニューから外す' : 'マイメニューに追加'}">${it.inMenu ? '★' : '☆'}</button>
+    </div>`;
   }).join('');
-  box.querySelectorAll('[data-exedit]').forEach((b) => b.addEventListener('click', () => {
-    const e = exById(b.dataset.exedit);
-    editingExId = e.id;
-    $('#ex-name').value = e.name;
-    $('#ex-part').value = e.part;
-    $('#ex-rest').value = e.rest ?? 90;
-    $('#ex-target').value = e.target ?? '';
-    $('#ex-form-title').textContent = 'メニューを編集';
-    $('#ex-cancel').classList.remove('hidden');
-    $('#ex-form').scrollIntoView({ behavior: 'smooth' });
-  }));
-  box.querySelectorAll('[data-exdel]').forEach((b) => b.addEventListener('click', async () => {
-    const id = b.dataset.exdel;
-    const n = counts[id] || 0;
-    const msg = n ? `「${exName(id)}」と関連する記録${n}件を削除しますか？` : `「${exName(id)}」を削除しますか？`;
-    if (!(await askConfirm(msg))) return;
-    db.exercises = db.exercises.filter((e) => e.id !== id);
-    db.records = db.records.filter((r) => r.exerciseId !== id);
+}
+
+function addToMenu(it) {
+  if (it.ex) it.ex.hidden = false;
+  else if (it.L) db.exercises.push(libEntry(it.L.id));
+  persist();
+  fillExerciseSelect(logExercise);
+  return it.ex ?? db.exercises[db.exercises.length - 1];
+}
+function removeFromMenu(it) {
+  if (!it.ex) return;
+  const hasRecords = db.records.some((r) => r.exerciseId === it.ex.id);
+  if (it.L && !hasRecords) db.exercises = db.exercises.filter((e) => e !== it.ex);
+  else it.ex.hidden = true;
+  persist();
+  fillExerciseSelect(logExercise);
+  renderPrevInfo();
+}
+function toggleMenu(key) {
+  const it = itemByKey(key);
+  if (!it) return;
+  if (it.inMenu) { removeFromMenu(it); toast(`「${it.name}」をマイメニューから外しました`); }
+  else { addToMenu(it); toast(`「${it.name}」をマイメニューに追加しました`); }
+}
+
+$('#guide-list').addEventListener('click', (e) => {
+  const star = e.target.closest('[data-star]');
+  if (star) { toggleMenu(star.dataset.star); renderGuide(); return; }
+  const open = e.target.closest('[data-open]');
+  if (open) openSheet(open.dataset.open);
+});
+$('#guide-groups').addEventListener('click', (e) => {
+  const c = e.target.closest('[data-group]');
+  if (!c) return;
+  guide.group = c.dataset.group;
+  guide.muscle = null;
+  renderGuide();
+});
+$('#guide-muscles').addEventListener('click', (e) => {
+  const c = e.target.closest('[data-muscle]');
+  if (!c) return;
+  guide.muscle = c.dataset.muscle || null;
+  renderGuide();
+});
+$('#guide-search').addEventListener('input', (e) => { guide.query = e.target.value; renderGuide(); });
+
+/* ---------- 種目の詳細シート ---------- */
+let sheetKey = null, sheetAnim = null;
+
+function openSheet(key) {
+  const it = itemByKey(key);
+  if (!it) return;
+  sheetKey = key;
+  const L = it.L, ex = it.ex;
+  $('#sheet-title').textContent = it.name;
+  updateSheetStar(it);
+  const best = ex ? bestFor(ex.id) : null;
+  const last = ex ? lastFor(ex.id) : null;
+  const n = ex ? db.records.filter((r) => r.exerciseId === ex.id).length : 0;
+  const tags = `<div class="sheet-tags">
+      <span class="mtag main">${esc(muscleName(it.muscle))}</span>
+      ${it.sub.map((m) => `<span class="mtag">${esc(muscleName(m))}</span>`).join('')}
+      <span class="mtag plain">${esc(it.equip)}</span>
+      ${L ? `<span class="mtag plain">目安の休憩 ${fmtSec(L.rest)}</span>` : ''}
+    </div>`;
+  const figure = L ? `
+    <section class="fig-panel">
+      <div class="fig-stage-wrap">
+        <div class="fig-stage"></div>
+        <div class="fig-phase"><span data-p="a">① 開始</span><span class="arrow">→</span><span data-p="b">② 終了</span></div>
+        <button class="fig-play" id="fig-play" aria-label="一時停止">❚❚</button>
+      </div>
+      ${L.fig.caption ? `<p class="fig-caption">${esc(L.fig.caption)}</p>` : ''}
+      <div class="fig-steps">
+        <figure>${FigureKit.staticSVG(L, 'a')}<figcaption>① 開始姿勢</figcaption></figure>
+        <figure>${FigureKit.staticSVG(L, 'b')}<figcaption>② 終了姿勢</figcaption></figure>
+      </div>
+    </section>` : '';
+  const map = `
+    <section class="sheet-sec">
+      <h3>鍛えられる部位</h3>
+      <div class="map-wrap">
+        <div class="map-fig">${FigureKit.muscleMap({ primary: [it.muscle], secondary: it.sub })}</div>
+        <ul class="map-legend">
+          <li><i class="dot main"></i>メイン: ${esc(muscleName(it.muscle))}</li>
+          ${it.sub.length ? `<li><i class="dot sub"></i>サブ: ${it.sub.map((m) => esc(muscleName(m))).join('、')}</li>` : ''}
+        </ul>
+      </div>
+    </section>`;
+  const how = L ? `
+    <section class="sheet-sec">
+      <h3>やり方</h3>
+      <ol class="steps">${L.steps.map((t) => `<li>${esc(t)}</li>`).join('')}</ol>
+    </section>
+    <section class="sheet-sec">
+      <h3>気をつけるポイント</h3>
+      <ul class="points">${L.points.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>
+    </section>` : '';
+  const mine = `
+    <section class="sheet-sec">
+      <h3>自分の記録</h3>
+      ${ex && n ? `<div class="mini-stats">
+          <div><b>${fmtNum(best.max)}kg</b><span>最大重量 (${best.maxReps}回)</span></div>
+          <div><b>${fmtNum(bestFor1rm(ex.id))}kg</b><span>推定1RM</span></div>
+          <div><b>${n}</b><span>記録数</span></div>
+        </div>
+        <p class="hint">前回 ${fmtDate(last.date)}: ${last.sets.map((s) => `${fmtNum(s.w)}kg×${s.r}`).join(', ')}</p>`
+        : '<p class="hint">まだ記録がありません</p>'}
+      ${ex && it.inMenu ? `
+        <form class="sheet-settings" id="sheet-settings">
+          ${!L ? `<label>種目名<input type="text" id="ss-name" maxlength="40" value="${esc(ex.name)}" required></label>
+            <label>メインの部位<select id="ss-muscle">${muscleOptions(ex.muscle)}</select></label>` : ''}
+          <div class="row">
+            <label class="grow">標準の休憩 (秒)<input type="number" id="ss-rest" inputmode="numeric" min="0" step="5" value="${ex.rest ?? 90}"></label>
+            <label class="grow">目標重量 (kg)<input type="number" id="ss-target" inputmode="decimal" min="0" step="0.5" value="${ex.target ?? ''}" placeholder="任意"></label>
+          </div>
+          <button type="submit" class="btn secondary">設定を保存</button>
+        </form>` : ''}
+    </section>`;
+  const actions = `
+    <div class="sheet-actions">
+      <button class="btn primary grow" id="sheet-log">この種目を記録する</button>
+      ${!L && ex ? '<button class="btn ghost" id="sheet-delete">削除</button>' : ''}
+    </div>`;
+  $('#sheet-body').innerHTML = tags + figure + map + how + mine + actions;
+  $('#sheet').hidden = false;
+  document.body.classList.add('no-scroll');
+  $('#sheet-body').scrollTop = 0;
+
+  sheetAnim?.stop();
+  sheetAnim = null;
+  if (L) {
+    sheetAnim = FigureKit.animate($('#sheet-body .fig-panel'), L);
+    const play = $('#fig-play');
+    const sync = () => {
+      const on = sheetAnim.isPlaying();
+      play.textContent = on ? '❚❚' : '▶';
+      play.setAttribute('aria-label', on ? '一時停止' : '再生');
+    };
+    sync();
+    play.addEventListener('click', () => { sheetAnim.toggle(); sync(); });
+  }
+  $('#sheet-log').addEventListener('click', () => {
+    const cur = itemByKey(key);
+    const target = cur.inMenu ? cur.ex : addToMenu(cur);
+    closeSheet();
+    clearForm();
+    fillExerciseSelect(logExercise);
+    logExercise.value = target.id;
+    onExerciseChange();
+    showTab('log');
+    if (!cur.inMenu) toast('マイメニューに追加しました');
+  });
+  $('#sheet-settings')?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const rest = parseInt($('#ss-rest').value, 10);
+    const target = parseFloat($('#ss-target').value);
+    ex.rest = isFinite(rest) ? rest : 90;
+    ex.target = isFinite(target) && target > 0 ? target : null;
+    if (!L) {
+      const name = $('#ss-name').value.trim();
+      if (!name) return;
+      if (db.exercises.some((x) => x !== ex && x.name === name)) { toast('同じ名前の種目があります'); return; }
+      ex.name = name;
+      ex.muscle = $('#ss-muscle').value;
+      $('#sheet-title').textContent = name;
+    }
     persist();
     refreshAll();
+    toast('設定を保存しました');
+  });
+  $('#sheet-delete')?.addEventListener('click', async () => {
+    const msg = n ? `「${ex.name}」と関連する記録${n}件を削除しますか？` : `「${ex.name}」を削除しますか？`;
+    if (!(await askConfirm(msg))) return;
+    db.exercises = db.exercises.filter((e) => e !== ex);
+    db.records = db.records.filter((r) => r.exerciseId !== ex.id);
+    persist();
+    closeSheet();
+    refreshAll();
     toast('削除しました');
-  }));
+  });
 }
+function updateSheetStar(it) {
+  const b = $('#sheet-star');
+  b.textContent = it.inMenu ? '★' : '☆';
+  b.setAttribute('aria-pressed', it.inMenu);
+  b.setAttribute('aria-label', it.inMenu ? 'マイメニューから外す' : 'マイメニューに追加');
+  b.title = b.getAttribute('aria-label');
+}
+function closeSheet() {
+  sheetAnim?.stop();
+  sheetAnim = null;
+  sheetKey = null;
+  $('#sheet').hidden = true;
+  document.body.classList.remove('no-scroll');
+  if ($('#tab-menu').classList.contains('active')) renderGuide();
+}
+$('#sheet-close').addEventListener('click', closeSheet);
+$('#sheet').addEventListener('click', (e) => { if (e.target.id === 'sheet') closeSheet(); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('#sheet').hidden && $('#dialog').hidden) closeSheet(); });
+$('#sheet-star').addEventListener('click', () => {
+  if (!sheetKey) return;
+  toggleMenu(sheetKey);
+  openSheet(sheetKey);
+});
+$('#btn-howto').addEventListener('click', () => {
+  const ex = exById(logExercise.value);
+  if (ex) openSheet(itemKeyOf(ex));
+  else showTab('menu');
+});
 
-function resetExForm() {
-  editingExId = null;
-  $('#ex-form').reset();
-  $('#ex-rest').value = 90;
-  $('#ex-form-title').textContent = 'メニューを追加';
-  $('#ex-cancel').classList.add('hidden');
+/* ---------- オリジナル種目の追加 ---------- */
+function muscleOptions(selected) {
+  return GROUPS.map((g) => `<optgroup label="${esc(g.name)}">${MUSCLES.filter((m) => m.group === g.id)
+    .map((m) => `<option value="${m.id}"${m.id === selected ? ' selected' : ''}>${esc(m.name)}</option>`).join('')}</optgroup>`).join('');
 }
-$('#ex-cancel').addEventListener('click', resetExForm);
+$('#ex-muscle').innerHTML = muscleOptions('chest_mid');
 $('#ex-form').addEventListener('submit', (e) => {
   e.preventDefault();
   const name = $('#ex-name').value.trim();
   if (!name) return;
-  const dup = db.exercises.find((x) => x.name === name && x.id !== editingExId);
-  if (dup) { toast('同じ名前のメニューがあります'); return; }
+  if (db.exercises.some((x) => x.name === name)) { toast('同じ名前の種目があります'); return; }
   const rest = parseInt($('#ex-rest').value, 10);
   const target = parseFloat($('#ex-target').value);
-  const data = {
+  db.exercises.push({
+    id: uid(),
     name,
-    part: $('#ex-part').value,
+    muscle: $('#ex-muscle').value,
     rest: isFinite(rest) ? rest : 90,
     target: isFinite(target) && target > 0 ? target : null,
-  };
-  if (editingExId) Object.assign(exById(editingExId), data);
-  else db.exercises.push({ id: uid(), ...data });
+  });
   persist();
-  toast(editingExId ? 'メニューを更新しました' : 'メニューを追加しました');
-  resetExForm();
+  $('#ex-form').reset();
+  $('#ex-rest').value = 90;
+  $('#ex-muscle').value = 'chest_mid';
   refreshAll();
+  renderGuide();
+  toast(`「${name}」をマイメニューに追加しました`);
 });
 
 /* データ管理 */
@@ -975,14 +1257,14 @@ function showExport(message, filename, content, type) {
 }
 $('#btn-export').addEventListener('click', () => {
   showExport('バックアップデータです。コピーしてメモ等に保存するか、ファイル保存してください。',
-    `muscle-manager-${todayStr()}.json`, JSON.stringify({ app: 'muscle-manager', version: 1, ...db }, null, 2), 'application/json');
+    `muscle-manager-${todayStr()}.json`, JSON.stringify({ app: 'muscle-manager', version: 2, ...db }, null, 2), 'application/json');
 });
 $('#btn-csv').addEventListener('click', () => {
   const q = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-  const lines = [['日付', '種目', '部位', 'セット', '重量(kg)', '回数', '休憩(秒)', 'RPE', 'メモ', '体重(kg)'].map(q).join(',')];
+  const lines = [['日付', '種目', '部位', '筋肉', 'セット', '重量(kg)', '回数', '休憩(秒)', 'RPE', 'メモ', '体重(kg)'].map(q).join(',')];
   for (const r of sortedRecords()) {
     const ex = exById(r.exerciseId);
-    r.sets.forEach((s, i) => lines.push([r.date, ex?.name, ex?.part, i + 1, s.w, s.r, r.rest, r.rpe, r.note, db.bodyweights[r.date]].map(q).join(',')));
+    r.sets.forEach((s, i) => lines.push([r.date, ex?.name, GROUP_BY_ID[groupOf(ex)]?.name, muscleName(ex?.muscle), i + 1, s.w, s.r, r.rest, r.rpe, r.note, db.bodyweights[r.date]].map(q).join(',')));
   }
   showExport('CSV データです（Excel やスプレッドシートに貼り付けできます）。',
     `muscle-manager-${todayStr()}.csv`, '\uFEFF' + lines.join('\r\n'), 'text/csv');
@@ -1008,12 +1290,12 @@ async function restoreFrom(data) {
     return;
   }
   const ok = await openDialog({
-    message: `メニュー${data.exercises.length}件・記録${data.records.length}件を復元します。現在のデータは上書きされます。`,
+    message: `種目${data.exercises.length}件・記録${data.records.length}件を復元します。現在のデータは上書きされます。`,
     okLabel: '復元する',
     danger: true,
   });
   if (!ok) return;
-  db = { exercises: data.exercises, records: data.records, bodyweights: data.bodyweights || {} };
+  db = migrate({ exercises: data.exercises, records: data.records, bodyweights: data.bodyweights || {} });
   persist();
   refreshAll();
   toast('復元しました');
@@ -1025,7 +1307,7 @@ $('#btn-paste-import').addEventListener('click', async () => {
   catch { toast('データの形式が正しくありません'); }
 });
 $('#btn-reset').addEventListener('click', async () => {
-  if (!(await askConfirm('すべての記録とメニューを削除します。元に戻せません。よろしいですか？', 'すべて削除'))) return;
+  if (!(await askConfirm('すべての記録とマイメニューを削除します。元に戻せません。よろしいですか？', 'すべて削除'))) return;
   db = { exercises: defaultExercises(), records: [], bodyweights: {} };
   persist();
   try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
@@ -1042,7 +1324,7 @@ function refreshAll() {
   renderPrevInfo();
   applySetPlaceholders();
   renderDay();
-  renderExerciseList();
+  if ($('#tab-menu').classList.contains('active')) renderGuide();
   if ($('#tab-history').classList.contains('active')) renderHistory();
   if ($('#tab-stats').classList.contains('active')) renderStats();
 }
