@@ -1,5 +1,5 @@
 // オフラインでも使えるようにアプリ本体をキャッシュする
-const CACHE = 'muscle-manager-v2';
+const CACHE = 'muscle-manager-v3';
 const ASSETS = ['./', './index.html', './style.css', './exercises.js', './figure.js', './app.js', './manifest.json', './icon.svg'];
 
 self.addEventListener('install', (e) => {

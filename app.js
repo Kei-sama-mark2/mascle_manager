@@ -977,7 +977,7 @@ function renderGuide() {
     const n = it.ex ? counts[it.ex.id] || 0 : 0;
     if (it.ex && n) best[it.ex.id] = bestFor(it.ex.id);
     const b = it.ex ? best[it.ex.id] : null;
-    const thumb = it.L ? FigureKit.staticSVG(it.L, 'b', 'fig-thumb') : `<span class="thumb-custom">${esc(it.name.slice(0, 1))}</span>`;
+    const thumb = it.L ? FigureKit.thumbSVG(it.L) : `<span class="thumb-custom">${esc(it.name.slice(0, 1))}</span>`;
     return `<div class="ex-item${it.inMenu ? ' in-menu' : ''}">
       <button class="ex-open" data-open="${it.key}">
         <span class="ex-thumb">${thumb}</span>
@@ -1038,6 +1038,7 @@ $('#guide-search').addEventListener('input', (e) => { guide.query = e.target.val
 
 /* ---------- 種目の詳細シート ---------- */
 let sheetKey = null, sheetAnim = null;
+const FRAME_NO = ['①', '②', '③', '④'];
 
 function openSheet(key) {
   const it = itemByKey(key);
@@ -1055,18 +1056,32 @@ function openSheet(key) {
       <span class="mtag plain">${esc(it.equip)}</span>
       ${L ? `<span class="mtag plain">目安の休憩 ${fmtSec(L.rest)}</span>` : ''}
     </div>`;
+  const frames = L ? FigureKit.phaseInfo(L) : [];
   const figure = L ? `
     <section class="fig-panel">
       <div class="fig-stage-wrap">
-        <div class="fig-stage"></div>
-        <div class="fig-phase"><span data-p="a">① 開始</span><span class="arrow">→</span><span data-p="b">② 終了</span></div>
-        <button class="fig-play" id="fig-play" aria-label="一時停止">❚❚</button>
+        <div class="fig-stage" id="fig-stage"></div>
+        <div class="fig-now" id="fig-now"></div>
       </div>
-      ${L.fig.caption ? `<p class="fig-caption">${esc(L.fig.caption)}</p>` : ''}
-      <div class="fig-steps">
-        <figure>${FigureKit.staticSVG(L, 'a')}<figcaption>① 開始姿勢</figcaption></figure>
-        <figure>${FigureKit.staticSVG(L, 'b')}<figcaption>② 終了姿勢</figcaption></figure>
+      <p class="fig-desc" id="fig-desc" aria-live="polite"></p>
+      ${frames.length > 1 ? `<div class="fig-controls">
+        <button type="button" class="btn ghost" id="fig-prev" aria-label="前のコマ">◀</button>
+        <button type="button" class="btn secondary grow" id="fig-play"></button>
+        <button type="button" class="btn ghost" id="fig-next" aria-label="次のコマ">▶</button>
+      </div>` : ''}
+      <div class="fig-legend">
+        <span><i class="lg on"></i>縮んで力を出す</span><span><i class="lg st"></i>伸びながら耐える</span><span><i class="lg sub"></i>補助として働く</span>
       </div>
+      ${L.fig.caption ? `<p class="fig-caption">※${esc(L.fig.caption)}</p>` : ''}
+      ${frames.length > 1 ? `
+      <h3 class="strip-title">コマ送り <small>タップでそのコマを表示</small></h3>
+      <div class="fig-strip">
+        ${frames.map((f, i) => `<button type="button" class="frame" data-frame="${i}">
+          <span class="frame-fig">${FigureKit.frameSVG(L, i)}</span>
+          <span class="frame-title">${FRAME_NO[i]} ${esc(f.title)}</span>
+          <span class="frame-desc">${esc(f.desc)}</span>
+        </button>`).join('')}
+      </div>` : ''}
     </section>` : '';
   const map = `
     <section class="sheet-sec">
@@ -1122,15 +1137,29 @@ function openSheet(key) {
   sheetAnim?.stop();
   sheetAnim = null;
   if (L) {
-    sheetAnim = FigureKit.animate($('#sheet-body .fig-panel'), L);
     const play = $('#fig-play');
-    const sync = () => {
-      const on = sheetAnim.isPlaying();
-      play.textContent = on ? '❚❚' : '▶';
-      play.setAttribute('aria-label', on ? '一時停止' : '再生');
+    const strip = $$('#sheet-body .frame');
+    const syncPlay = () => {
+      if (!play) return;
+      play.textContent = sheetAnim.isPlaying() ? '❚❚ 一時停止' : '▶ 再生';
     };
-    sync();
-    play.addEventListener('click', () => { sheetAnim.toggle(); sync(); });
+    let cur = 0;
+    sheetAnim = FigureKit.animate($('#fig-stage'), L, (i) => {
+      cur = i;
+      const f = frames[i];
+      $('#fig-now').textContent = `${FRAME_NO[i] ?? ''} ${f.title}`;
+      $('#fig-desc').textContent = f.desc;
+      strip.forEach((el) => el.classList.toggle('active', Number(el.dataset.frame) === i));
+    });
+    syncPlay();
+    play?.addEventListener('click', () => { sheetAnim.toggle(); syncPlay(); });
+    $('#fig-prev')?.addEventListener('click', () => { sheetAnim.goTo((cur + frames.length - 1) % frames.length); syncPlay(); });
+    $('#fig-next')?.addEventListener('click', () => { sheetAnim.goTo((cur + 1) % frames.length); syncPlay(); });
+    strip.forEach((el) => el.addEventListener('click', () => {
+      sheetAnim.goTo(Number(el.dataset.frame));
+      syncPlay();
+      $('#fig-stage').closest('.fig-stage-wrap').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }));
   }
   $('#sheet-log').addEventListener('click', () => {
     const cur = itemByKey(key);
@@ -1179,7 +1208,18 @@ function updateSheetStar(it) {
   b.setAttribute('aria-label', it.inMenu ? 'マイメニューから外す' : 'マイメニューに追加');
   b.title = b.getAttribute('aria-label');
 }
-function closeSheet() {
+function closeSheet(slide = false) {
+  const box = $('#sheet .sheet-box');
+  if (slide && !$('#sheet').hidden) {
+    box.style.transition = 'transform .2s ease-in';
+    box.style.transform = 'translateY(100%)';
+    $('#sheet').style.transition = 'background-color .2s';
+    $('#sheet').style.backgroundColor = 'rgba(0,0,0,0)';
+    setTimeout(() => closeSheet(false), 200);
+    return;
+  }
+  box.style.transition = box.style.transform = '';
+  $('#sheet').style.transition = $('#sheet').style.backgroundColor = '';
   sheetAnim?.stop();
   sheetAnim = null;
   sheetKey = null;
@@ -1187,9 +1227,47 @@ function closeSheet() {
   document.body.classList.remove('no-scroll');
   if ($('#tab-menu').classList.contains('active')) renderGuide();
 }
-$('#sheet-close').addEventListener('click', closeSheet);
-$('#sheet').addEventListener('click', (e) => { if (e.target.id === 'sheet') closeSheet(); });
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('#sheet').hidden && $('#dialog').hidden) closeSheet(); });
+$('#sheet-close').addEventListener('click', () => closeSheet(true));
+$('#sheet').addEventListener('click', (e) => { if (e.target.id === 'sheet') closeSheet(true); });
+
+/* 下にスワイプして閉じる（ヘッダー部分、または一番上までスクロールした状態の本文から） */
+(() => {
+  const box = $('#sheet .sheet-box'), body = $('#sheet-body'), sheet = $('#sheet');
+  let y0 = 0, x0 = 0, t0 = 0, dy = 0, dragging = false, armed = false;
+  box.addEventListener('touchstart', (e) => {
+    if (e.touches.length !== 1) return;
+    armed = !!e.target.closest('.sheet-head') || body.scrollTop <= 0;
+    y0 = e.touches[0].clientY; x0 = e.touches[0].clientX; t0 = performance.now();
+    dy = 0; dragging = false;
+  }, { passive: true });
+  box.addEventListener('touchmove', (e) => {
+    if (!armed) return;
+    const dyNow = e.touches[0].clientY - y0, dx = e.touches[0].clientX - x0;
+    if (!dragging) {
+      if (dyNow > 8 && Math.abs(dyNow) > Math.abs(dx) * 1.2) {
+        dragging = true;
+        box.style.transition = 'none';
+        t0 = performance.now();
+      } else if (dyNow < -4 || Math.abs(dx) > 10) { armed = false; return; } else return;
+    }
+    dy = Math.max(0, dyNow - 8);
+    e.preventDefault();
+    box.style.transform = `translateY(${dy}px)`;
+    sheet.style.backgroundColor = `rgba(0,0,0,${(0.45 * Math.max(0, 1 - dy / 400)).toFixed(3)})`;
+  }, { passive: false });
+  const end = () => {
+    if (!dragging) return;
+    dragging = false; armed = false;
+    const v = dy / Math.max(1, performance.now() - t0);
+    if (dy > 110 || (dy > 40 && v > 0.6)) { closeSheet(true); return; }
+    box.style.transition = 'transform .2s ease-out';
+    box.style.transform = '';
+    sheet.style.backgroundColor = '';
+  };
+  box.addEventListener('touchend', end);
+  box.addEventListener('touchcancel', end);
+})();
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('#sheet').hidden && $('#dialog').hidden) closeSheet(true); });
 $('#sheet-star').addEventListener('click', () => {
   if (!sheetKey) return;
   toggleMenu(sheetKey);
