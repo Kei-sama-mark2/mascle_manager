@@ -461,3 +461,7 @@ input[type="date"]::-webkit-calendar-picker-indicator { margin-left: 2px; }
   position: absolute; top: 5px; left: 50%; transform: translateX(-50%);
   width: 40px; height: 5px; border-radius: 3px; background: var(--border);
 }
+
+/* ===== 種目名の自由入力 ===== */
+.new-ex { background: var(--bg); border-radius: 10px; padding: 10px 10px 2px; margin: 0 0 10px; }
+.new-ex input, .new-ex select { background: var(--card); }

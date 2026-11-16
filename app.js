@@ -237,6 +237,87 @@ function fillExerciseSelect(select, { includeAll = false, include = null } = {})
   if ([...select.options].some((o) => o.value === current)) select.value = current;
 }
 
+/* ---------- 記録画面の種目リスト（マイメニュー＋全種目＋自由入力） ---------- */
+const NEW_OPT = '__new__';
+/** 選択値から種目情報を得る。値は種目ID、未登録のライブラリ種目は 'lib:ID'、自由入力は NEW_OPT */
+function selInfo(v) {
+  if (!v || v === NEW_OPT) return null;
+  if (v.startsWith('lib:')) {
+    const L = LIBRARY_BY_ID[v.slice(4)];
+    return L ? { ex: null, L, muscle: L.muscle, sub: L.sub || [], rest: L.rest ?? 90 } : null;
+  }
+  const ex = exById(v);
+  if (!ex) return null;
+  const L = libOf(ex);
+  return { ex, L, muscle: ex.muscle, sub: L?.sub || [], rest: ex.rest ?? L?.rest ?? 90 };
+}
+function fillLogSelect() {
+  const sel = logExercise;
+  const cur = sel.value;
+  const opt = (v, name) => `<option value="${esc(v)}">${esc(name)}</option>`;
+  const mine = myMenu().sort(byMuscle);
+  let html = mine.length ? `<optgroup label="★ マイメニュー">${mine.map((e) => opt(e.id, e.name)).join('')}</optgroup>` : '';
+  for (const g of GROUPS) {
+    const items = [];
+    for (const L of LIBRARY) {
+      if (MUSCLE_BY_ID[L.muscle]?.group !== g.id) continue;
+      const ex = db.exercises.find((e) => e.lib === L.id);
+      if (ex && !ex.hidden) continue; // マイメニューに表示済み
+      items.push({ v: ex ? ex.id : `lib:${L.id}`, name: ex ? ex.name : L.name, muscle: L.muscle });
+    }
+    for (const ex of db.exercises) {
+      if (!ex.lib && ex.hidden && groupOf(ex) === g.id) items.push({ v: ex.id, name: ex.name, muscle: ex.muscle });
+    }
+    if (!items.length) continue;
+    items.sort(byMuscle);
+    html += `<optgroup label="${esc(g.name)}">${items.map((i) => opt(i.v, i.name)).join('')}</optgroup>`;
+  }
+  html += `<optgroup label="その他">${opt(NEW_OPT, '＋ 種目名を自由に入力…')}</optgroup>`;
+  sel.innerHTML = html;
+  if ([...sel.options].some((o) => o.value === cur)) sel.value = cur;
+  // 自由入力欄の候補
+  const names = new Set([...db.exercises.map((e) => e.name), ...LIBRARY.flatMap((L) => [L.name, ...(L.aliases || [])])]);
+  $('#ex-names').innerHTML = [...names].map((n) => `<option value="${esc(n)}"></option>`).join('');
+}
+const hasLogOption = (v) => [...logExercise.options].some((o) => o.value === v);
+
+/** 名前から種目を探す（登録済み → ライブラリの名前/別名）。見つからなければ null */
+function findExerciseByName(name) {
+  const n = name.trim();
+  const ex = db.exercises.find((e) => e.name === n);
+  if (ex) return { ex };
+  const L = LIBRARY.find((x) => x.name === n || (x.aliases || []).includes(n));
+  if (L) return { ex: db.exercises.find((e) => e.lib === L.id) || null, L };
+  return null;
+}
+/** 選択（または入力）された種目を、記録できる状態（db に存在・マイメニューに表示）にして返す */
+function materializeSelection() {
+  const v = logExercise.value;
+  if (v === NEW_OPT) {
+    const name = $('#log-new-name').value.trim();
+    if (!name) return null;
+    const found = findExerciseByName(name);
+    if (found?.ex) { found.ex.hidden = false; return found.ex; }
+    if (found?.L) { const e = libEntry(found.L.id); db.exercises.push(e); return e; }
+    const rest = parseInt($('#log-rest').value, 10);
+    const e = { id: uid(), name, muscle: $('#log-new-muscle').value || 'other', rest: isFinite(rest) ? rest : 90, target: null };
+    db.exercises.push(e);
+    e._created = true;
+    return e;
+  }
+  if (v.startsWith('lib:')) {
+    const L = LIBRARY_BY_ID[v.slice(4)];
+    if (!L) return null;
+    const e = db.exercises.find((x) => x.lib === L.id) || libEntry(L.id);
+    if (!db.exercises.includes(e)) db.exercises.push(e);
+    e.hidden = false;
+    return e;
+  }
+  const ex = exById(v);
+  if (ex) ex.hidden = false;
+  return ex;
+}
+
 function addSetRow(w = '', r = '') {
   const idx = setsBox.children.length;
   const row = document.createElement('div');
@@ -262,7 +343,9 @@ function renumberSets() {
 }
 /** 前回記録の値をプレースホルダーとして表示 */
 function applySetPlaceholders() {
-  const last = lastFor(logExercise.value, editingId);
+  let v = logExercise.value;
+  if (v === NEW_OPT) v = findExerciseByName($('#log-new-name').value)?.ex?.id ?? '';
+  const last = lastFor(v, editingId);
   [...setsBox.children].forEach((row, i) => {
     const s = last?.sets[Math.min(i, last.sets.length - 1)];
     row.querySelector('.set-w').placeholder = s ? s.w : 'kg';
@@ -284,15 +367,32 @@ function resetSets(n = 3) {
 
 function renderPrevInfo() {
   const box = $('#log-prev');
-  const id = logExercise.value;
+  let id = logExercise.value;
+  const isNew = id === NEW_OPT;
+  $('#log-new-wrap').hidden = !isNew;
+  if (isNew) {
+    const f = findExerciseByName($('#log-new-name').value);
+    $('#btn-howto').disabled = !(f?.L || libOf(f?.ex));
+  } else $('#btn-howto').disabled = false;
   if (!id) { box.innerHTML = ''; return; }
+  let info = selInfo(id);
+  const parts = [];
+  if (isNew) {
+    const name = $('#log-new-name').value.trim();
+    const found = name ? findExerciseByName(name) : null;
+    if (found) {
+      id = found.ex?.id ?? `lib:${found.L.id}`;
+      info = selInfo(id);
+      parts.push(`<div>「${esc(found.ex?.name ?? found.L.name)}」として記録します</div>`);
+    } else {
+      parts.push(`<div>${name ? `新しい種目「${esc(name)}」として記録し、マイメニューに追加します` : '種目名を入力してください（候補から選ぶこともできます）'}</div>`);
+    }
+  }
   const last = lastFor(id, editingId);
   const best = bestFor(id, editingId);
-  const ex = exById(id);
-  const parts = [];
-  if (ex) {
-    const L = libOf(ex);
-    parts.push(`<div><span class="part-tag">${esc(muscleName(ex.muscle))}</span>${(L?.sub || []).map((m) => `<span class="part-tag soft">${esc(muscleName(m))}</span>`).join('')}</div>`);
+  const ex = info?.ex;
+  if (info) {
+    parts.unshift(`<div><span class="part-tag">${esc(muscleName(info.muscle))}</span>${info.sub.map((m) => `<span class="part-tag soft">${esc(muscleName(m))}</span>`).join('')}</div>`);
   }
   if (last) {
     parts.push(`<div>前回 (${fmtDate(last.date)}): ${last.sets.map((s) => `${fmtNum(s.w)}kg×${s.r}`).join(', ')}
@@ -300,7 +400,7 @@ function renderPrevInfo() {
   }
   if (best) parts.push(`<div>自己ベスト: <b>${fmtNum(best.max)}kg × ${best.maxReps}回</b> (${fmtDate(best.date)}) / 推定1RM ${fmtNum(bestFor1rm(id))}kg</div>`);
   if (ex?.target) parts.push(`<div>目標: ${fmtNum(ex.target)}kg ${best && best.max >= ex.target ? '✅ 達成済み' : best ? `(あと ${fmtNum(ex.target - best.max)}kg)` : ''}</div>`);
-  if (!last && ex) parts.push('<div>この種目の初めての記録です</div>');
+  if (!last && info) parts.push('<div>この種目の初めての記録です</div>');
   box.innerHTML = parts.join('');
   $('#btn-copy-last')?.addEventListener('click', () => {
     setsBox.innerHTML = '';
@@ -316,8 +416,9 @@ function bestFor1rm(id) {
 }
 
 function onExerciseChange() {
-  const ex = exById(logExercise.value);
-  if (ex && !editingId) $('#log-rest').value = ex.rest ?? 90;
+  const info = selInfo(logExercise.value);
+  if (info && !editingId) $('#log-rest').value = info.rest;
+  if (logExercise.value === NEW_OPT) setTimeout(() => $('#log-new-name').focus(), 0);
   renderPrevInfo();
   applySetPlaceholders();
   saveDraft();
@@ -327,6 +428,8 @@ function saveDraft() {
   if (editingId) return;
   saveJSON(DRAFT_KEY, {
     exerciseId: logExercise.value,
+    newName: $('#log-new-name').value,
+    newMuscle: $('#log-new-muscle').value,
     sets: [...setsBox.children].map((row) => [row.querySelector('.set-w').value, row.querySelector('.set-r').value]),
     rest: $('#log-rest').value,
     rpe: $('#log-rpe').value,
@@ -335,12 +438,13 @@ function saveDraft() {
 }
 function restoreDraft() {
   const d = loadJSON(DRAFT_KEY, null);
-  if (d && exById(d.exerciseId)) logExercise.value = d.exerciseId;
+  if (d && hasLogOption(d.exerciseId)) logExercise.value = d.exerciseId;
+  $('#log-new-name').value = d?.newName || '';
+  $('#log-new-muscle').value = d?.newMuscle || '';
   setsBox.innerHTML = '';
   if (d?.sets?.length) d.sets.forEach(([w, r]) => addSetRow(w, r));
   else resetSets();
-  const ex = exById(logExercise.value);
-  $('#log-rest').value = d?.rest || ex?.rest || 90;
+  $('#log-rest').value = d?.rest || selInfo(logExercise.value)?.rest || 90;
   $('#log-rpe').value = d?.rpe || '';
   $('#log-note').value = d?.note || '';
   renderPrevInfo();
@@ -355,8 +459,10 @@ function clearForm() {
   resetSets();
   $('#log-note').value = '';
   $('#log-rpe').value = '';
-  const ex = exById(logExercise.value);
-  $('#log-rest').value = ex?.rest ?? 90;
+  if (logExercise.value === NEW_OPT) logExercise.selectedIndex = 0;
+  $('#log-new-name').value = '';
+  $('#log-new-muscle').value = '';
+  $('#log-rest').value = selInfo(logExercise.value)?.rest ?? 90;
   try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
   renderPrevInfo();
 }
@@ -368,7 +474,7 @@ function startEdit(id) {
   showTab('log');
   logDate.value = rec.date;
   renderBodyweight();
-  fillExerciseSelect(logExercise, { include: rec.exerciseId });
+  fillLogSelect();
   logExercise.value = rec.exerciseId;
   setsBox.innerHTML = '';
   rec.sets.forEach((s) => addSetRow(s.w, s.r));
@@ -396,8 +502,12 @@ async function deleteRecord(id) {
 
 $('#log-form').addEventListener('submit', (e) => {
   e.preventDefault();
-  const exerciseId = logExercise.value;
-  if (!exerciseId) { toast('メニューを選択してください'); return; }
+  if (!logExercise.value) { toast('種目を選択してください'); return; }
+  if (logExercise.value === NEW_OPT && !$('#log-new-name').value.trim()) {
+    toast('種目名を入力してください');
+    $('#log-new-name').focus();
+    return;
+  }
   const raw = readSets();
   // 未入力（プレースホルダーのみ）の行は、何かしら入力された行が1つもない場合のみ前回値として採用
   const anyTouched = raw.some((s) => s.touched);
@@ -406,6 +516,9 @@ $('#log-form').addEventListener('submit', (e) => {
     .filter((s) => isFinite(s.w) && isFinite(s.r) && s.r > 0)
     .map(({ w, r }) => ({ w, r }));
   if (!sets.length) { toast('重量と回数を入力してください'); return; }
+  const target = materializeSelection();
+  if (!target) { toast('種目を選択してください'); return; }
+  const exerciseId = target.id;
 
   const restVal = parseInt($('#log-rest').value, 10);
   const data = {
@@ -427,9 +540,12 @@ $('#log-form').addEventListener('submit', (e) => {
   } else {
     db.records.push({ id: uid(), createdAt: Date.now(), ...data });
     if (prevBest && newMax > prevBest.max) toast(`🎉 自己ベスト更新！ ${fmtNum(newMax)}kg`);
-    else toast('保存しました');
+    else toast(target._created ? `「${target.name}」を追加して保存しました` : '保存しました');
   }
+  delete target._created;
   persist();
+  fillLogSelect();
+  logExercise.value = exerciseId;
   clearForm();
   renderDay();
 });
@@ -445,6 +561,8 @@ $('#btn-copy-set').addEventListener('click', () => {
   saveDraft();
 });
 logExercise.addEventListener('change', onExerciseChange);
+$('#log-new-name').addEventListener('input', () => { renderPrevInfo(); applySetPlaceholders(); saveDraft(); });
+$('#log-new-muscle').addEventListener('change', saveDraft);
 ['#log-rest', '#log-rpe', '#log-note'].forEach((s) => $(s).addEventListener('input', saveDraft));
 logDate.addEventListener('change', () => { renderBodyweight(); renderDay(); });
 
@@ -996,7 +1114,7 @@ function addToMenu(it) {
   if (it.ex) it.ex.hidden = false;
   else if (it.L) db.exercises.push(libEntry(it.L.id));
   persist();
-  fillExerciseSelect(logExercise);
+  fillLogSelect();
   return it.ex ?? db.exercises[db.exercises.length - 1];
 }
 function removeFromMenu(it) {
@@ -1005,7 +1123,7 @@ function removeFromMenu(it) {
   if (it.L && !hasRecords) db.exercises = db.exercises.filter((e) => e !== it.ex);
   else it.ex.hidden = true;
   persist();
-  fillExerciseSelect(logExercise);
+  fillLogSelect();
   renderPrevInfo();
 }
 function toggleMenu(key) {
@@ -1131,7 +1249,7 @@ function openSheet(key) {
     const target = cur.inMenu ? cur.ex : addToMenu(cur);
     closeSheet();
     clearForm();
-    fillExerciseSelect(logExercise);
+    fillLogSelect();
     logExercise.value = target.id;
     onExerciseChange();
     showTab('log');
@@ -1237,7 +1355,15 @@ $('#sheet-star').addEventListener('click', () => {
   openSheet(sheetKey);
 });
 $('#btn-howto').addEventListener('click', () => {
-  const ex = exById(logExercise.value);
+  const v = logExercise.value;
+  if (v.startsWith('lib:')) return openSheet(v);
+  if (v === NEW_OPT) {
+    const found = findExerciseByName($('#log-new-name').value);
+    if (found?.ex) return openSheet(itemKeyOf(found.ex));
+    if (found?.L) return openSheet(`lib:${found.L.id}`);
+    return;
+  }
+  const ex = exById(v);
   if (ex) openSheet(itemKeyOf(ex));
   else showTab('menu');
 });
@@ -1248,6 +1374,7 @@ function muscleOptions(selected) {
     .map((m) => `<option value="${m.id}"${m.id === selected ? ' selected' : ''}>${esc(m.name)}</option>`).join('')}</optgroup>`).join('');
 }
 $('#ex-muscle').innerHTML = muscleOptions('chest_mid');
+$('#log-new-muscle').innerHTML = '<option value="">選ばない（その他）</option>' + muscleOptions('');
 $('#ex-form').addEventListener('submit', (e) => {
   e.preventDefault();
   const name = $('#ex-name').value.trim();
@@ -1361,7 +1488,7 @@ $('#btn-reset').addEventListener('click', async () => {
  *  初期化
  * ========================================================= */
 function refreshAll() {
-  fillExerciseSelect(logExercise);
+  fillLogSelect();
   renderPrevInfo();
   applySetPlaceholders();
   renderDay();
@@ -1371,7 +1498,7 @@ function refreshAll() {
 }
 
 logDate.value = todayStr();
-fillExerciseSelect(logExercise);
+fillLogSelect();
 restoreDraft();
 renderBodyweight();
 renderDay();
