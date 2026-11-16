@@ -297,7 +297,8 @@ canvas { width: 100%; display: block; }
 .fig .gear-l { stroke: var(--fig-gear); }
 .fig .cable { stroke: var(--fig-gear); }
 .fig .floor { stroke: var(--border); }
-.fig .path-hint { fill: none; stroke: var(--primary); stroke-width: 1.4; stroke-dasharray: 3 4; opacity: .75; }
+.fig .path-hint { fill: none; stroke: var(--primary); stroke-width: 1.8; stroke-dasharray: 4 3; stroke-linecap: round; }
+.fig .path-head { fill: var(--primary); }
 
 /* ===== 筋肉マップ ===== */
 .muscle-map { display: block; width: 100%; height: auto; }
@@ -384,39 +385,24 @@ body.no-scroll { overflow: hidden; }
 .sheet-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 12px; }
 .sheet-tags .mtag { font-size: 12px; padding: 1px 9px; }
 
-.fig-panel { margin-bottom: 18px; }
-.fig-stage-wrap {
-  position: relative; aspect-ratio: 4 / 3; max-width: 100%; background: var(--stage);
-  border: 1px solid var(--border); border-radius: 12px; overflow: hidden;
-}
-.fig-stage { position: absolute; inset: 34px 6px 6px; }
-.fig-now {
-  position: absolute; top: 8px; left: 8px; padding: 3px 10px; border-radius: 999px;
-  background: var(--primary); color: #fff; font-size: 13px; font-weight: 700;
-}
-.fig-desc { min-height: 2.8em; margin: 8px 2px 4px; font-size: 14px; line-height: 1.5; font-weight: 600; }
-.fig-controls { display: flex; gap: 8px; }
-.fig-controls .btn { margin: 0; }
-.fig-controls .btn.ghost { width: 52px; }
-.fig-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--muted); margin: 10px 2px 0; }
+.fig-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--muted); margin: 0 2px 8px; }
 .fig-legend span { display: inline-flex; align-items: center; gap: 5px; }
 .lg { display: inline-block; width: 12px; height: 12px; border-radius: 4px; }
 .lg.on { background: var(--m-on); }
 .lg.st { background: var(--m-st); }
 .lg.sub { background: var(--m-sub); }
-.fig-caption { font-size: 12px; color: var(--muted); margin: 6px 2px 0; }
-.strip-title { font-size: 15px; margin: 16px 0 8px; }
-.strip-title small { font-size: 12px; font-weight: 400; color: var(--muted); margin-left: 4px; }
-.fig-strip { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-.frame {
-  display: flex; flex-direction: column; gap: 3px; text-align: left; padding: 6px 6px 8px;
-  background: var(--stage); border: 2px solid var(--border); border-radius: 10px;
-  color: var(--text); font: inherit; cursor: pointer;
+.lg.arrow { width: 16px; height: 0; border-radius: 0; border-top: 2px dashed var(--primary); }
+.fig-caption { font-size: 12px; color: var(--muted); margin: 0 2px 8px; }
+.frames { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
+.frame-row {
+  display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 10px; align-items: center;
+  background: var(--stage); border: 1px solid var(--border); border-radius: 12px; padding: 6px 10px 6px 6px;
 }
-.frame.active { border-color: var(--primary); }
-.frame-fig { display: block; aspect-ratio: 4 / 3; }
-.frame-title { font-size: 13px; font-weight: 700; }
-.frame-desc { font-size: 12px; line-height: 1.45; color: var(--muted); }
+.frame-fig { aspect-ratio: 4 / 3; }
+.frame-text b { display: block; font-size: 14px; margin-bottom: 4px; }
+.frame-text p { margin: 0; font-size: 13px; line-height: 1.55; }
+.frames.single .frame-row { grid-template-columns: 1fr; }
+@media (min-width: 560px) { .frame-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
 
 .sheet-sec { margin-bottom: 18px; }
 .sheet-sec h3 { font-size: 15px; margin: 0 0 8px; }

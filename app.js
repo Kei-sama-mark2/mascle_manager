@@ -1037,7 +1037,7 @@ $('#guide-muscles').addEventListener('click', (e) => {
 $('#guide-search').addEventListener('input', (e) => { guide.query = e.target.value; renderGuide(); });
 
 /* ---------- 種目の詳細シート ---------- */
-let sheetKey = null, sheetAnim = null;
+let sheetKey = null;
 const FRAME_NO = ['①', '②', '③', '④'];
 
 function openSheet(key) {
@@ -1058,30 +1058,22 @@ function openSheet(key) {
     </div>`;
   const frames = L ? FigureKit.phaseInfo(L) : [];
   const figure = L ? `
-    <section class="fig-panel">
-      <div class="fig-stage-wrap">
-        <div class="fig-stage" id="fig-stage"></div>
-        <div class="fig-now" id="fig-now"></div>
-      </div>
-      <p class="fig-desc" id="fig-desc" aria-live="polite"></p>
-      ${frames.length > 1 ? `<div class="fig-controls">
-        <button type="button" class="btn ghost" id="fig-prev" aria-label="前のコマ">◀</button>
-        <button type="button" class="btn secondary grow" id="fig-play"></button>
-        <button type="button" class="btn ghost" id="fig-next" aria-label="次のコマ">▶</button>
-      </div>` : ''}
+    <section class="sheet-sec">
+      <h3>動作の流れ</h3>
       <div class="fig-legend">
         <span><i class="lg on"></i>縮んで力を出す</span><span><i class="lg st"></i>伸びながら耐える</span><span><i class="lg sub"></i>補助として働く</span>
+        ${frames.length > 1 ? '<span><i class="lg arrow"></i>動く向き</span>' : ''}
       </div>
       ${L.fig.caption ? `<p class="fig-caption">※${esc(L.fig.caption)}</p>` : ''}
-      ${frames.length > 1 ? `
-      <h3 class="strip-title">コマ送り <small>タップでそのコマを表示</small></h3>
-      <div class="fig-strip">
-        ${frames.map((f, i) => `<button type="button" class="frame" data-frame="${i}">
-          <span class="frame-fig">${FigureKit.frameSVG(L, i)}</span>
-          <span class="frame-title">${FRAME_NO[i]} ${esc(f.title)}</span>
-          <span class="frame-desc">${esc(f.desc)}</span>
-        </button>`).join('')}
-      </div>` : ''}
+      <ol class="frames${frames.length === 1 ? ' single' : ''}">
+        ${frames.map((f, i) => `<li class="frame-row">
+          <div class="frame-fig">${FigureKit.frameSVG(L, i)}</div>
+          <div class="frame-text">
+            <b>${frames.length > 1 ? `${FRAME_NO[i]} ` : ''}${esc(f.title)}</b>
+            <p>${esc(f.desc)}</p>
+          </div>
+        </li>`).join('')}
+      </ol>
     </section>` : '';
   const map = `
     <section class="sheet-sec">
@@ -1134,33 +1126,6 @@ function openSheet(key) {
   document.body.classList.add('no-scroll');
   $('#sheet-body').scrollTop = 0;
 
-  sheetAnim?.stop();
-  sheetAnim = null;
-  if (L) {
-    const play = $('#fig-play');
-    const strip = $$('#sheet-body .frame');
-    const syncPlay = () => {
-      if (!play) return;
-      play.textContent = sheetAnim.isPlaying() ? '❚❚ 一時停止' : '▶ 再生';
-    };
-    let cur = 0;
-    sheetAnim = FigureKit.animate($('#fig-stage'), L, (i) => {
-      cur = i;
-      const f = frames[i];
-      $('#fig-now').textContent = `${FRAME_NO[i] ?? ''} ${f.title}`;
-      $('#fig-desc').textContent = f.desc;
-      strip.forEach((el) => el.classList.toggle('active', Number(el.dataset.frame) === i));
-    });
-    syncPlay();
-    play?.addEventListener('click', () => { sheetAnim.toggle(); syncPlay(); });
-    $('#fig-prev')?.addEventListener('click', () => { sheetAnim.goTo((cur + frames.length - 1) % frames.length); syncPlay(); });
-    $('#fig-next')?.addEventListener('click', () => { sheetAnim.goTo((cur + 1) % frames.length); syncPlay(); });
-    strip.forEach((el) => el.addEventListener('click', () => {
-      sheetAnim.goTo(Number(el.dataset.frame));
-      syncPlay();
-      $('#fig-stage').closest('.fig-stage-wrap').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    }));
-  }
   $('#sheet-log').addEventListener('click', () => {
     const cur = itemByKey(key);
     const target = cur.inMenu ? cur.ex : addToMenu(cur);
@@ -1220,8 +1185,6 @@ function closeSheet(slide = false) {
   }
   box.style.transition = box.style.transform = '';
   $('#sheet').style.transition = $('#sheet').style.backgroundColor = '';
-  sheetAnim?.stop();
-  sheetAnim = null;
   sheetKey = null;
   $('#sheet').hidden = true;
   document.body.classList.remove('no-scroll');

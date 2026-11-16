@@ -1,6 +1,6 @@
 'use strict';
 /* =========================================================
- *  種目の図（筋肉付きの人体モデル）と筋肉マップの描画
+ *  種目の図（筋肉付きの人体モデル・コマ送りの静止画）と筋肉マップの描画
  *  座標系: SVG（右が前方、下が床方向）。床は y=150。
  *  角度: 0=真下, 90=前, 180=真上, 270=後ろ
  *
@@ -97,14 +97,16 @@ const FigureKit = (() => {
   const solve = (fig, p) => (fig.view === 'front' ? solveFront(p) : solveSide(p));
 
   /**
-   * 2関節の補間。末端がほぼ動かない（床の足・握ったバー）ならIKで固定、
-   * それ以外は関節角度を補間して自然な円弧を描かせる。
+   * 2関節の補間。
+   * ・末端がほぼ動かない（床の足・握ったバー）→ IKで固定
+   * ・mode='line'（プレス・ロウ・スクワットなど）→ 末端を直線的に動かす（バーの軌道）
+   * ・それ以外（フライ・レイズ・カールなど）→ 関節角度を補間して円弧を描く
    */
-  function limb(R, Ra, Ma, Ea, Rb, Mb, Eb, la, lb, u) {
+  function limb(R, Ra, Ma, Ea, Rb, Mb, Eb, la, lb, u, mode) {
     const a1 = lerpAng(angleOf(sub(Ma, Ra)), angleOf(sub(Mb, Rb)), u);
     const a2 = lerpAng(angleOf(sub(Ea, Ma)), angleOf(sub(Eb, Mb)), u);
     const M = add(R, dir(a1), la);
-    if (dist(Ea, Eb) < 6) {
+    if (dist(Ea, Eb) < 6 || mode === 'line') {
       const target = lerpP(Ea, Eb, u);
       const m1 = ikMid(R, target, la, lb, 1), m2 = ikMid(R, target, la, lb, -1);
       const m = dist(m1, M) <= dist(m2, M) ? m1 : m2;
@@ -113,7 +115,7 @@ const FigureKit = (() => {
     return [M, add(M, dir(a2), lb)];
   }
 
-  function interp(Ja, Jb, u) {
+  function interp(Ja, Jb, u, mode) {
     if (u <= 0) return Ja;
     if (u >= 1) return Jb;
     const J = {};
@@ -122,10 +124,10 @@ const FigureKit = (() => {
       J.hip = lerpP(Ja.hip, Jb.hip, u);
       J.sh = add(J.hip, dir(J.t), L.T);
       J.head = add(J.sh, dir(J.t), L.N + L.HR);
-      [J.el, J.ha] = limb(J.sh, Ja.sh, Ja.el, Ja.ha, Jb.sh, Jb.el, Jb.ha, L.UA, L.FA, u);
-      [J.el2, J.ha2] = limb(J.sh, Ja.sh, Ja.el2, Ja.ha2, Jb.sh, Jb.el2, Jb.ha2, L.UA, L.FA, u);
-      [J.kn, J.an] = limb(J.hip, Ja.hip, Ja.kn, Ja.an, Jb.hip, Jb.kn, Jb.an, L.TH, L.SH, u);
-      [J.kn2, J.an2] = limb(J.hip, Ja.hip, Ja.kn2, Ja.an2, Jb.hip, Jb.kn2, Jb.an2, L.TH, L.SH, u);
+      [J.el, J.ha] = limb(J.sh, Ja.sh, Ja.el, Ja.ha, Jb.sh, Jb.el, Jb.ha, L.UA, L.FA, u, mode);
+      [J.el2, J.ha2] = limb(J.sh, Ja.sh, Ja.el2, Ja.ha2, Jb.sh, Jb.el2, Jb.ha2, L.UA, L.FA, u, mode);
+      [J.kn, J.an] = limb(J.hip, Ja.hip, Ja.kn, Ja.an, Jb.hip, Jb.kn, Jb.an, L.TH, L.SH, u, mode);
+      [J.kn2, J.an2] = limb(J.hip, Ja.hip, Ja.kn2, Ja.an2, Jb.hip, Jb.kn2, Jb.an2, L.TH, L.SH, u, mode);
       J.ft = lerpAng(Ja.ft, Jb.ft, u);
       J.ft2 = lerpAng(Ja.ft2, Jb.ft2, u);
       return J;
@@ -133,19 +135,17 @@ const FigureKit = (() => {
     J.front = true;
     J.tl = lerp(Ja.tl, Jb.tl, u);
     for (const k of ['hipR', 'hipL', 'neck', 'shR', 'shL', 'head']) J[k] = lerpP(Ja[k], Jb[k], u);
-    [J.elR, J.haR] = limb(J.shR, Ja.shR, Ja.elR, Ja.haR, Jb.shR, Jb.elR, Jb.haR, L.UA, L.FA, u);
-    [J.elL, J.haL] = limb(J.shL, Ja.shL, Ja.elL, Ja.haL, Jb.shL, Jb.elL, Jb.haL, L.UA, L.FA, u);
+    [J.elR, J.haR] = limb(J.shR, Ja.shR, Ja.elR, Ja.haR, Jb.shR, Jb.elR, Jb.haR, L.UA, L.FA, u, mode);
+    [J.elL, J.haL] = limb(J.shL, Ja.shL, Ja.elL, Ja.haL, Jb.shL, Jb.elL, Jb.haL, L.UA, L.FA, u, mode);
     J.legs = Ja.legs;
     if (J.legs) {
-      [J.knR, J.anR] = limb(J.hipR, Ja.hipR, Ja.knR, Ja.anR, Jb.hipR, Jb.knR, Jb.anR, L.TH, L.SH, u);
-      [J.knL, J.anL] = limb(J.hipL, Ja.hipL, Ja.knL, Ja.anL, Jb.hipL, Jb.knL, Jb.anL, L.TH, L.SH, u);
+      [J.knR, J.anR] = limb(J.hipR, Ja.hipR, Ja.knR, Ja.anR, Jb.hipR, Jb.knR, Jb.anR, L.TH, L.SH, u, mode);
+      [J.knL, J.anL] = limb(J.hipL, Ja.hipL, Ja.knL, Ja.anL, Jb.hipL, Jb.knL, Jb.anL, L.TH, L.SH, u, mode);
     }
     return J;
   }
 
   /* ---------- 局面（コマ）と筋肉の状態 ---------- */
-  const PHASES = ['a', 'ab', 'b', 'ba'];
-  const PHASE_U = { a: 0, ab: 0.5, b: 1, ba: 0.5 };
 
   /** その局面で、メイン部位が「収縮して力を出している」か */
   function isContracting(ex, phase) {
@@ -328,6 +328,8 @@ const FigureKit = (() => {
         }
       }
     }
+    // 寝ている姿勢を足側から見る図では、頭は胸の奥に見える
+    if (fig.headBehind) s += circle(J.head, L.HR, 'sk');
     // 胴体
     const pts = [
       [CX + 5, ny - 1], [J.shR[0] - 1, sy + 1], [J.shR[0] - 1, y(0.22)], [CX + 11, y(0.62)], [CX + 13.5, hy],
@@ -357,8 +359,10 @@ const FigureKit = (() => {
       s += `<rect x="${CX - 5}" y="${f1(y(0.4))}" width="10" height="${f1(Math.max(2, hy - y(0.4) - 2))}" rx="3" class="${mu(st, 'abs')}"/>`;
     }
     // 首・頭
-    s += capsule([CX, ny + 2], [CX, ny - L.N], 3.6, 3.4, 'sk');
-    s += circle(J.head, L.HR, 'sk');
+    if (!fig.headBehind) {
+      s += capsule([CX, ny + 2], [CX, ny - L.N], 3.6, 3.4, 'sk');
+      s += circle(J.head, L.HR, 'sk');
+    }
     // 腕
     for (const [sh, el, ha] of [[J.shR, J.elR, J.haR], [J.shL, J.elL, J.haL]]) {
       const v = unit(sub(el, sh)), n = [-v[1], v[0]];
@@ -492,8 +496,9 @@ const FigureKit = (() => {
     if (ex._fk) return ex._fk;
     const fig = ex.fig;
     const Ja = solve(fig, fig.a), Jb = solve(fig, fig.b);
-    const vb = boundsOf(fig, [Ja, Jb, interp(Ja, Jb, 0.25), interp(Ja, Jb, 0.5), interp(Ja, Jb, 0.75)]);
-    ex._fk = { fig, Ja, Jb, vb };
+    const mode = fig.path;
+    const vb = boundsOf(fig, [Ja, Jb, interp(Ja, Jb, 0.25, mode), interp(Ja, Jb, 0.5, mode), interp(Ja, Jb, 0.75, mode)]);
+    ex._fk = { fig, Ja, Jb, vb, mode };
     return ex._fk;
   }
   function render(ex, J, phase) {
@@ -506,91 +511,40 @@ const FigureKit = (() => {
   const svgWrap = (vb, inner, cls = '') =>
     `<svg class="fig ${cls}" viewBox="${vb.map(f1).join(' ')}" preserveAspectRatio="xMidYMid meet" aria-hidden="true">${inner}</svg>`;
 
-  /** 手（またはひざ）の通り道を点線で示す */
-  function pathHint(ex) {
-    const { Ja, Jb } = prepare(ex);
-    const pick = (J) => (J.front ? J.haR : J.ha);
-    const pts = [];
-    for (let i = 0; i <= 16; i++) pts.push(pick(interp(Ja, Jb, i / 16)));
+  /**
+   * 動きの軌道を矢印つきの点線で示す。
+   * 手・足首・腰のうち、いちばん大きく動く部位の通り道を表示する。
+   * reverse=true なら折り返し → 開始の向き。
+   */
+  function pathArrow(ex, reverse) {
+    const { Ja, Jb, mode } = prepare(ex);
+    const keys = Ja.front ? ['haR', 'anR', 'hipR'] : ['ha', 'an', 'hip'];
+    const k = keys.filter((x) => Ja[x] && Jb[x]).sort((x, y) => dist(Jb[y], Ja[y]) - dist(Jb[x], Ja[x]))[0];
+    let pts = [];
+    for (let i = 0; i <= 20; i++) pts.push(interp(Ja, Jb, i / 20, mode)[k]);
     if (dist(pts[0], pts[pts.length - 1]) < 8) return '';
-    return `<polyline points="${pts.map(P).join(' ')}" class="path-hint"/>`;
+    if (reverse) pts = pts.reverse();
+    const tip = pts[pts.length - 1], prev = pts[pts.length - 3];
+    const d = unit(sub(tip, prev)), n = [-d[1], d[0]];
+    const head = [add(tip, d, 3), add(add(tip, d, -5), n, 4), add(add(tip, d, -5), n, -4)];
+    return `<polyline points="${pts.slice(0, -1).map(P).join(' ')}" class="path-hint"/>`
+      + `<polygon points="${head.map(P).join(' ')}" class="path-head"/>`;
   }
 
-  /** コマ i の静止画 */
+  /** コマ i の静止画（動作中のコマには軌道の矢印を重ねる） */
   function frameSVG(ex, i, cls = '') {
-    const { Ja, Jb, vb } = prepare(ex);
+    const { Ja, Jb, vb, mode } = prepare(ex);
     const info = phaseInfo(ex)[i];
-    return svgWrap(vb, render(ex, interp(Ja, Jb, info.u), info.key), cls);
+    const J = interp(Ja, Jb, info.u, mode);
+    const arrow = info.key === 'ab' ? pathArrow(ex, false) : info.key === 'ba' ? pathArrow(ex, true) : '';
+    return svgWrap(vb, render(ex, J, info.key) + arrow, cls);
   }
   /** 一覧用サムネイル（メインの筋肉が最も縮んだコマ） */
   function thumbSVG(ex) {
     const peakIdx = ex.static ? 0 : (ex.peak ?? 'b') === 'a' ? 0 : 2;
-    return frameSVG(ex, peakIdx, 'fig-thumb');
-  }
-
-  /**
-   * アニメーション付きで描画。onPhase(index) で現在のコマ番号を通知。
-   * 戻り値: { stop, toggle, goTo(i), isPlaying }
-   */
-  function animate(stage, ex, onPhase) {
-    const { Ja, Jb, vb } = prepare(ex);
-    const info = phaseInfo(ex);
-    const hint = pathHint(ex);
-    const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-    const draw = (u, key) => { stage.innerHTML = svgWrap(vb, hint + render(ex, interp(Ja, Jb, u), key), 'fig-anim'); };
-    const ease = (x) => x * x * (3 - 2 * x);
-    // 開始で静止 → 動作 → 折り返しで静止 → 戻し（各局面の時間 ms）
-    const SEG = [900, 1500, 900, 1700];
-    const CYCLE = SEG.reduce((a, b) => a + b, 0);
-    let raf = null, t0 = performance.now(), playing = false, offset = 0, lastIdx = -1;
-
-    function at(ms) {
-      let t = ms % CYCLE;
-      for (let i = 0; i < 4; i++) {
-        if (t < SEG[i]) {
-          const x = t / SEG[i];
-          const u = i === 0 ? 0 : i === 1 ? ease(x) : i === 2 ? 1 : 1 - ease(x);
-          return { u, i };
-        }
-        t -= SEG[i];
-      }
-      return { u: 0, i: 0 };
-    }
-    function frame(now) {
-      if (!stage.isConnected) return;
-      const { u, i } = at(now - t0);
-      draw(u, PHASES[i]);
-      if (i !== lastIdx) { lastIdx = i; onPhase?.(i); }
-      raf = requestAnimationFrame(frame);
-    }
-    function goTo(i) {
-      cancelAnimationFrame(raf);
-      playing = false;
-      const f = info[Math.min(i, info.length - 1)];
-      draw(f.u, f.key);
-      lastIdx = i;
-      offset = SEG.slice(0, i).reduce((a, b) => a + b, 0) + (i === 1 || i === 3 ? SEG[i] / 2 : 0);
-      onPhase?.(i);
-    }
-    function play() {
-      if (info.length < 2) return;
-      playing = true;
-      t0 = performance.now() - offset;
-      raf = requestAnimationFrame(frame);
-    }
-    if (info.length < 2 || reduce) goTo(info.length < 2 ? 0 : 0);
-    else play();
-    return {
-      stop() { cancelAnimationFrame(raf); playing = false; },
-      toggle() {
-        if (playing) { offset = (performance.now() - t0) % CYCLE; cancelAnimationFrame(raf); playing = false; }
-        else play();
-        return playing;
-      },
-      goTo,
-      isPlaying: () => playing,
-      canPlay: info.length > 1,
-    };
+    const { Ja, Jb, vb, mode } = prepare(ex);
+    const info = phaseInfo(ex)[peakIdx];
+    return svgWrap(vb, render(ex, interp(Ja, Jb, info.u, mode), info.key), 'fig-thumb');
   }
 
   /* =========================================================
@@ -675,5 +629,5 @@ const FigureKit = (() => {
       <text x="50" y="198" class="mm-label">前</text><text x="164" y="198" class="mm-label">後ろ</text></svg>`;
   }
 
-  return { frameSVG, thumbSVG, animate, phaseInfo, muscleMap };
+  return { frameSVG, thumbSVG, phaseInfo, muscleMap };
 })();

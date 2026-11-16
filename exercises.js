@@ -58,8 +58,8 @@ const FS = { hy: 74, legs: { k: [112, 147] } };
 const FSEAT = { hy: 100, legs: false };
 const SEAT_EX = [['rect', 80, 104, 40, 8], ['line', 86, 112, 86, 150, 3], ['line', 114, 112, 114, 150, 3]];
 const BACKPAD_EX = [['rect', 85, 40, 30, 64, 4]];
-const LYF = { hy: 112, tl: 26, legs: false };
-const LYF_EX = [['rect', 76, 112, 48, 9, 3], ['line', 84, 121, 84, 150, 3], ['line', 116, 121, 116, 150, 3]];
+const LYF = { hy: 112, tl: 12, legs: false, head: [100, 91] };
+const LYF_EX = [['rect', 78, 110, 44, 9, 3], ['line', 86, 119, 86, 150, 3], ['line', 114, 119, 114, 150, 3]];
 const FOOT_VIEW = 'ベンチに寝た姿勢を足側から見た図';
 
 const LIBRARY = [
@@ -67,7 +67,7 @@ const LIBRARY = [
   {
     id: 'bench_press', verbs: ['下ろす', '押し上げる'], peak: 'a',  name: 'ベンチプレス', muscle: 'chest_mid', sub: ['triceps', 'delt_front'],
     equip: 'バーベル', rest: 150,
-    fig: { view: 'side', gear: 'barbell', bench: FLAT, a: { ...LIE, h: [80, 62] }, b: { ...LIE, ua: 58, fa: 183 } },
+    fig: { path: 'line', view: 'side', gear: 'barbell', bench: FLAT, a: { ...LIE, h: [80, 62] }, b: { ...LIE, ua: 58, fa: 183 } },
     steps: [
       'ベンチに仰向けになり、目の真上にバーが来る位置に寝る',
       '肩甲骨を寄せて下げ、胸を張る（腰は軽くアーチ、お尻はベンチにつける）',
@@ -85,7 +85,7 @@ const LIBRARY = [
   {
     id: 'incline_bench', verbs: ['下ろす', '押し上げる'], peak: 'a',  name: 'インクラインベンチプレス', muscle: 'chest_upper', sub: ['delt_front', 'triceps'],
     equip: 'バーベル', rest: 150,
-    fig: { view: 'side', gear: 'barbell', bench: INCL_B, a: { ...INCL, h: [88, 34] }, b: { ...INCL, h: [97, 82] } },
+    fig: { path: 'line', view: 'side', gear: 'barbell', bench: INCL_B, a: { ...INCL, h: [88, 34] }, b: { ...INCL, h: [97, 82] } },
     steps: [
       'ベンチの角度を30〜45度にセットする',
       '肩甲骨を寄せて胸を張り、肩幅の約1.5倍でバーを握る',
@@ -101,7 +101,7 @@ const LIBRARY = [
   {
     id: 'decline_bench', verbs: ['下ろす', '押し上げる'], peak: 'a',  name: 'デクラインベンチプレス', muscle: 'chest_lower', sub: ['triceps'],
     equip: 'バーベル', rest: 150,
-    fig: { view: 'side', gear: 'barbell', bench: DECL_B, ex: [['circle', 152, 126, 5]], a: { ...DECL, h: [84, 70] }, b: { ...DECL, h: [96, 108] } },
+    fig: { path: 'line', view: 'side', gear: 'barbell', bench: DECL_B, ex: [['circle', 152, 126, 5]], a: { ...DECL, h: [84, 70] }, b: { ...DECL, h: [96, 108] } },
     steps: [
       '頭が低くなるよう傾けたベンチに、足をパッドに掛けて固定する',
       '肩甲骨を寄せ、肩幅よりやや広くバーを握る',
@@ -116,7 +116,7 @@ const LIBRARY = [
   {
     id: 'db_press', verbs: ['下ろす', '押し上げる'], peak: 'a',  name: 'ダンベルプレス', muscle: 'chest_mid', sub: ['triceps', 'delt_front'],
     equip: 'ダンベル', rest: 120,
-    fig: { view: 'side', gear: 'dumbbell', bench: FLAT, a: { ...LIE, h: [80, 62] }, b: { ...LIE, ua: 52, fa: 180 } },
+    fig: { path: 'line', view: 'side', gear: 'dumbbell', bench: FLAT, a: { ...LIE, h: [80, 62] }, b: { ...LIE, ua: 52, fa: 180 } },
     steps: [
       'ダンベルを太ももに乗せて座り、膝で押し上げる反動を使いながら仰向けになる',
       '肩甲骨を寄せて胸を張り、ダンベルを胸の横で構える',
@@ -132,7 +132,7 @@ const LIBRARY = [
   {
     id: 'incline_db_press', verbs: ['下ろす', '押し上げる'], peak: 'a',  name: 'インクラインダンベルプレス', muscle: 'chest_upper', sub: ['delt_front', 'triceps'],
     equip: 'ダンベル', rest: 120,
-    fig: { view: 'side', gear: 'dumbbell', bench: INCL_B, a: { ...INCL, h: [88, 34] }, b: { ...INCL, h: [95, 80] } },
+    fig: { path: 'line', view: 'side', gear: 'dumbbell', bench: INCL_B, a: { ...INCL, h: [88, 34] }, b: { ...INCL, h: [95, 80] } },
     steps: [
       'ベンチを30〜45度にセットし、ダンベルを持って背中をつける',
       '肩甲骨を寄せ、ダンベルを胸の上部の横で構える',
@@ -148,7 +148,7 @@ const LIBRARY = [
   {
     id: 'db_fly', verbs: ['腕を開く', '腕を閉じる'], peak: 'a',  name: 'ダンベルフライ', muscle: 'chest_mid', sub: ['delt_front'],
     equip: 'ダンベル', rest: 90,
-    fig: { view: 'front', caption: FOOT_VIEW, gear: 'dumbbell', ex: LYF_EX, a: { ...LYF, r: { ua: 190, fa: 185 } }, b: { ...LYF, r: { ua: 97, fa: 88 } } },
+    fig: { view: 'front', caption: FOOT_VIEW, gear: 'dumbbell', ex: LYF_EX, headBehind: true, a: { ...LYF, r: { ua: 188, fa: 200 } }, b: { ...LYF, r: { ua: 95, fa: 110 } } },
     steps: [
       'ベンチに仰向けになり、手のひらを向かい合わせてダンベルを胸の上に構える',
       '肘を軽く曲げたまま角度を固定し、弧を描くように横へ開く',
@@ -164,7 +164,7 @@ const LIBRARY = [
   {
     id: 'incline_db_fly', verbs: ['腕を開く', '腕を閉じる'], peak: 'a',  name: 'インクラインダンベルフライ', muscle: 'chest_upper', sub: ['delt_front'],
     equip: 'ダンベル', rest: 90,
-    fig: { view: 'front', caption: `${FOOT_VIEW}（ベンチは30度前後）`, gear: 'dumbbell', ex: LYF_EX, a: { ...LYF, r: { ua: 190, fa: 185 } }, b: { ...LYF, r: { ua: 97, fa: 88 } } },
+    fig: { view: 'front', caption: `${FOOT_VIEW}（ベンチは30度前後）`, gear: 'dumbbell', ex: LYF_EX, headBehind: true, a: { ...LYF, r: { ua: 188, fa: 200 } }, b: { ...LYF, r: { ua: 95, fa: 110 } } },
     steps: [
       'ベンチを30度前後にセットし、ダンベルを胸の上部の上に構える',
       '肘を軽く曲げた角度を保ったまま、横へ大きく開く',
@@ -233,7 +233,7 @@ const LIBRARY = [
   {
     id: 'chest_press_machine', verbs: ['押し出す', '戻す'],  name: 'チェストプレス（マシン）', muscle: 'chest_mid', sub: ['triceps', 'delt_front'],
     equip: 'マシン', rest: 90,
-    fig: {
+    fig: { path: 'line',
       view: 'side', gear: 'handle', bench: { p: [[112, 114], [82, 114], [76, 56]], legs: [[106, 114], [84, 114]] },
       a: { hip: [90, 107], t: 183, h: [108, 66], k: [128, 147] },
       b: { hip: [90, 107], t: 183, h: [138, 62], k: [128, 147] },
@@ -273,7 +273,7 @@ const LIBRARY = [
   {
     id: 'deadlift', verbs: ['立ち上がる', '下ろす'],  name: 'デッドリフト', muscle: 'erectors', sub: ['glutes', 'hamstrings', 'traps', 'lats'],
     equip: 'バーベル', rest: 180,
-    fig: {
+    fig: { path: 'line',
       view: 'side', gear: 'barbell',
       a: { hip: [69, 115], t: 128, h: [106, 136], k: [100, 147] },
       b: { hip: [100, 74], t: 180, h: [104, 77], k: [100, 147] },
@@ -315,7 +315,7 @@ const LIBRARY = [
   {
     id: 'lat_pulldown', verbs: ['引き下ろす', '戻す'],  name: 'ラットプルダウン', muscle: 'lats', sub: ['biceps', 'midback'],
     equip: 'マシン', rest: 90,
-    fig: {
+    fig: { path: 'line',
       view: 'front', facing: 'back', gear: 'pulldown', anchor: [100, -34], ex: [['rect', 82, 92, 36, 7, 3], ...SEAT_EX],
       a: { ...FSEAT, r: { h: [142, 2], s: 1 } },
       b: { ...FSEAT, r: { h: [136, 44], s: 1 } },
@@ -335,7 +335,7 @@ const LIBRARY = [
   {
     id: 'bent_row', verbs: ['引き上げる', '下ろす'],  name: 'ベントオーバーロウ', muscle: 'midback', sub: ['lats', 'delt_rear', 'biceps'],
     equip: 'バーベル', rest: 120,
-    fig: {
+    fig: { path: 'line',
       view: 'side', gear: 'barbell',
       a: { hip: [80, 92], t: 120, h: [120, 118], k: [100, 147] },
       b: { hip: [80, 92], t: 120, h: [104, 96], k: [100, 147] },
@@ -355,7 +355,7 @@ const LIBRARY = [
   {
     id: 'one_arm_row', verbs: ['引き上げる', '下ろす'],  name: 'ワンハンドダンベルロウ', muscle: 'lats', sub: ['midback', 'biceps'],
     equip: 'ダンベル', rest: 90,
-    fig: {
+    fig: { path: 'line',
       view: 'side', gear: 'dumbbell', gearFar: false, bench: ROW_B,
       a: { ...ROW, h: [124, 132] },
       b: { ...ROW, h: [100, 94] },
@@ -375,7 +375,7 @@ const LIBRARY = [
   {
     id: 'seated_row', verbs: ['引く', '戻す'],  name: 'シーテッドケーブルロウ', muscle: 'midback', sub: ['lats', 'biceps', 'delt_rear'],
     equip: 'ケーブル', rest: 90,
-    fig: {
+    fig: { path: 'line',
       view: 'side', gear: 'cable', anchor: [174, 118], bench: { p: [[40, 132], [104, 132]] },
       ex: [['line', 147, 116, 147, 146, 4]],
       a: { hip: [70, 125], t: 165, h: [120, 96], k: [142, 130] },
@@ -414,7 +414,7 @@ const LIBRARY = [
   {
     id: 'barbell_shrug', verbs: ['肩をすくめる', '下ろす'],  name: 'バーベルシュラッグ', muscle: 'traps', sub: ['forearm'],
     equip: 'バーベル', rest: 75,
-    fig: {
+    fig: { path: 'line',
       view: 'front', facing: 'back', gear: 'barbell',
       a: { ...FS, r: { h: [114, 76], s: -1 } },
       b: { ...FS, shrug: 8, r: { h: [114, 68], s: -1 } },
@@ -432,7 +432,7 @@ const LIBRARY = [
   {
     id: 'db_shrug', verbs: ['肩をすくめる', '下ろす'],  name: 'ダンベルシュラッグ', muscle: 'traps', sub: ['forearm'],
     equip: 'ダンベル', rest: 75,
-    fig: {
+    fig: { path: 'line',
       view: 'front', facing: 'back', gear: 'dumbbell',
       a: { ...FS, r: { h: [122, 76], s: -1 } },
       b: { ...FS, shrug: 8, r: { h: [122, 68], s: -1 } },
@@ -470,7 +470,7 @@ const LIBRARY = [
   {
     id: 'db_shoulder_press', verbs: ['押し上げる', '下ろす'],  name: 'ダンベルショルダープレス', aliases: ['ショルダープレス'], muscle: 'delt_front', sub: ['delt_side', 'triceps'],
     equip: 'ダンベル', rest: 120,
-    fig: {
+    fig: { path: 'line',
       view: 'front', gear: 'dumbbell', ex: [...BACKPAD_EX, ...SEAT_EX],
       a: { ...FSEAT, r: { h: [142, 46], s: 1 } },
       b: { ...FSEAT, r: { h: [124, 4], s: 1 } },
@@ -489,7 +489,7 @@ const LIBRARY = [
   {
     id: 'barbell_ohp', verbs: ['押し上げる', '下ろす'],  name: 'バーベルショルダープレス', aliases: ['ミリタリープレス'], muscle: 'delt_front', sub: ['delt_side', 'triceps'],
     equip: 'バーベル', rest: 150,
-    fig: {
+    fig: { path: 'line',
       view: 'side', gear: 'barbell',
       a: { ...STAND, h: [108, 24] },
       b: { ...STAND, h: [101, -24] },
@@ -580,7 +580,7 @@ const LIBRARY = [
   {
     id: 'upright_row', verbs: ['引き上げる', '下ろす'],  name: 'バーベルアップライトロウ', aliases: ['アップライトロウ'], muscle: 'delt_side', sub: ['traps', 'delt_front'],
     equip: 'バーベル', rest: 90,
-    fig: {
+    fig: { path: 'line',
       view: 'front', gear: 'barbell',
       a: { ...FS, r: { h: [116, 76], s: -1 } },
       b: { ...FS, r: { ua: 118, fa: 300 } },
@@ -599,7 +599,7 @@ const LIBRARY = [
   {
     id: 'face_pull', verbs: ['顔へ引く', '戻す'],  name: 'フェイスプル', muscle: 'delt_rear', sub: ['midback', 'traps'],
     equip: 'ケーブル', rest: 60,
-    fig: {
+    fig: { path: 'line',
       view: 'side', gear: 'cable', anchor: [178, 20],
       a: { ...STAND, t: 175, h: [150, 22] },
       b: { ...STAND, t: 175, h: [106, 12], hs: -1 },
@@ -618,7 +618,7 @@ const LIBRARY = [
   {
     id: 'arnold_press', verbs: ['ひねりながら押し上げる', 'ひねりながら下ろす'],  name: 'アーノルドプレス', muscle: 'delt_front', sub: ['delt_side', 'triceps'],
     equip: 'ダンベル', rest: 90,
-    fig: {
+    fig: { path: 'line',
       view: 'front', gear: 'dumbbell', ex: [...BACKPAD_EX, ...SEAT_EX],
       a: { ...FSEAT, r: { ua: 335, fa: 178 } },
       b: { ...FSEAT, r: { h: [124, 4], s: 1 } },
@@ -799,7 +799,7 @@ const LIBRARY = [
   {
     id: 'close_grip_bench', verbs: ['下ろす', '押し上げる'], peak: 'a',  name: 'ナローベンチプレス', muscle: 'triceps', sub: ['chest_mid', 'delt_front'],
     equip: 'バーベル', rest: 120,
-    fig: { view: 'side', gear: 'barbell', bench: FLAT, a: { ...LIE, h: [80, 62] }, b: { ...LIE, ua: 45, fa: 182 } },
+    fig: { path: 'line', view: 'side', gear: 'barbell', bench: FLAT, a: { ...LIE, h: [80, 62] }, b: { ...LIE, ua: 45, fa: 182 } },
     steps: [
       'ベンチに仰向けになり、肩幅くらいの狭めの手幅でバーを握る',
       '肘を体の近くに沿わせながら、みぞおちへ下ろす',
@@ -852,7 +852,7 @@ const LIBRARY = [
   {
     id: 'squat', verbs: ['しゃがむ', '立ち上がる'], peak: 'a',  name: 'スクワット', aliases: ['バーベルスクワット'], muscle: 'quads', sub: ['glutes', 'adductors', 'erectors'],
     equip: 'バーベル', rest: 180,
-    fig: {
+    fig: { path: 'line',
       view: 'side', gear: 'backbar',
       a: { ...STAND, h: [94, 30], hs: -1 },
       b: { hip: [72, 112], t: 140, h: [97, 80], hs: -1, k: [100, 147] },
@@ -874,7 +874,7 @@ const LIBRARY = [
   {
     id: 'leg_press', verbs: ['押し出す', '戻す'],  name: 'レッグプレス', muscle: 'quads', sub: ['glutes', 'hamstrings'],
     equip: 'マシン', rest: 120,
-    fig: {
+    fig: { path: 'line',
       view: 'side', gear: 'footplate', bench: { p: [[98, 128], [76, 128], [28, 110]], legs: [[92, 128], [44, 116]] },
       a: { hip: [80, 120], t: 250, h: [72, 124], k: [116, 92], ft: 200 },
       b: { hip: [80, 120], t: 250, h: [72, 124], k: [128, 70], ft: 200 },
@@ -950,7 +950,7 @@ const LIBRARY = [
   {
     id: 'rdl', verbs: ['お尻を引いて倒す', '起き上がる'], peak: 'a',  name: 'ルーマニアンデッドリフト', muscle: 'hamstrings', sub: ['glutes', 'erectors'],
     equip: 'バーベル', rest: 120,
-    fig: {
+    fig: { path: 'line',
       view: 'side', gear: 'barbell',
       a: { ...STAND, h: [104, 77] },
       b: { hip: [68, 82], t: 102, h: [114, 120], k: [100, 147] },
@@ -987,7 +987,7 @@ const LIBRARY = [
   {
     id: 'hip_thrust', verbs: ['腰を持ち上げる', '下ろす'],  name: 'ヒップスラスト', muscle: 'glutes', sub: ['hamstrings'],
     equip: 'バーベル', rest: 120,
-    fig: {
+    fig: { path: 'line',
       view: 'side', gear: 'hipbar', bench: { p: [[36, 112], [72, 112]] },
       a: { hip: [101, 139], t: 223.3, h: [100, 131], k: [140, 147] },
       b: { hip: [116, 104], t: 270, h: [114, 96], k: [140, 147] },
@@ -1025,7 +1025,7 @@ const LIBRARY = [
   {
     id: 'calf_raise', verbs: ['かかとを上げる', '下ろす'],  name: 'カーフレイズ', muscle: 'calves',
     equip: 'ダンベル', rest: 45,
-    fig: {
+    fig: { path: 'line',
       view: 'side', gear: 'dumbbell', ex: [['rect', 106, 141, 40, 9, 1]],
       a: { hip: [100, 70], t: 180, ua: 2, fa: 0, k: [100, 143], ft: 100 },
       b: { hip: [104, 60], t: 180, ua: 2, fa: 0, k: [104, 133], ft: 35 },
@@ -1043,7 +1043,7 @@ const LIBRARY = [
   {
     id: 'sumo_squat', verbs: ['しゃがむ', '立ち上がる'], peak: 'a',  name: 'ワイドスクワット', aliases: ['スモウスクワット'], muscle: 'adductors', sub: ['glutes', 'quads'],
     equip: 'ダンベル', rest: 90,
-    fig: {
+    fig: { path: 'line',
       view: 'front', gear: 'center',
       a: { hy: 78, r: { h: [104, 82], s: 1 }, legs: { k: [136, 147], s: -1 } },
       b: { hy: 108, r: { h: [104, 112], s: 1 }, legs: { k: [136, 147], s: -1 } },
@@ -1121,7 +1121,7 @@ const LIBRARY = [
   {
     id: 'ab_roller', verbs: ['転がして伸ばす', '引き戻す'], peak: 'a',  name: 'アブローラー', aliases: ['腹筋ローラー'], muscle: 'abs', sub: ['lats', 'obliques'],
     equip: 'アブローラー', rest: 60,
-    fig: {
+    fig: { path: 'line',
       view: 'side', gear: 'roller',
       a: { hip: [50, 104], t: 104.6, h: [100, 141], k: [28, 146], ft: 270 },
       b: { hip: [100, 135], t: 95, h: [198, 141], k: [28, 146], ft: 270 },
