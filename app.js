@@ -124,6 +124,7 @@ function defaultExercises() { return DEFAULT_MENU.map(libEntry); }
 function migrate(d) {
   d.records ||= [];
   d.bodyweights ||= {};
+  d.dayNotes ||= {};
   const byName = {};
   for (const L of LIBRARY) for (const n of [L.name, ...(L.aliases || [])]) byName[n] = L;
   for (const ex of d.exercises) {
@@ -140,7 +141,7 @@ function migrate(d) {
 
 let db = loadJSON(STORAGE_KEY, null);
 if (!db || !Array.isArray(db.exercises)) {
-  db = { exercises: defaultExercises(), records: [], bodyweights: {} };
+  db = { exercises: defaultExercises(), records: [], bodyweights: {}, dayNotes: {} };
 }
 migrate(db);
 saveJSON(STORAGE_KEY, db);
@@ -618,6 +619,8 @@ function renderDay() {
   const list = sortedRecords(db.records.filter((r) => r.date === date));
   const box = $('#day-records');
   const prIds = computePrIds();
+  const note = db.dayNotes[date];
+  $('#day-note').innerHTML = note ? noteHtml(note) : '';
   if (!list.length) {
     box.innerHTML = '<div class="empty">まだ記録がありません</div>';
     $('#day-summary').textContent = '';
@@ -800,9 +803,15 @@ document.addEventListener('visibilitychange', renderTimers);
  * ========================================================= */
 let calMonth = new Date(); calMonth.setDate(1);
 
+const NOTE_REASONS = ['休養日', '体調不良', '疲労・筋肉痛', '仕事・用事', '旅行・外出', 'ケガ', 'その他'];
+let calSelected = null;
+
+function noteHtml(note) {
+  return `<div class="day-note">${note.reason ? `<span class="reason-tag">${esc(note.reason)}</span>` : ''}${note.text ? `<span>${esc(note.text)}</span>` : ''}</div>`;
+}
+
 function renderCalendar() {
   const y = calMonth.getFullYear(), m = calMonth.getMonth();
-  $('#cal-title').textContent = `${y}年${m + 1}月`;
   const counts = {};
   db.records.forEach((r) => {
     counts[r.date] ||= new Set();
@@ -811,27 +820,111 @@ function renderCalendar() {
   const first = new Date(y, m, 1).getDay();
   const days = new Date(y, m + 1, 0).getDate();
   const today = todayStr();
+  const prefix = `${y}-${pad(m + 1)}-`;
+  if (!calSelected || !calSelected.startsWith(prefix)) calSelected = today.startsWith(prefix) ? today : null;
   let html = '日月火水木金土'.split('').map((d) => `<div class="dow">${d}</div>`).join('');
   for (let i = 0; i < first; i++) html += '<div class="day blank"></div>';
-  let trainDays = 0;
+  let trainDays = 0, noteDays = 0;
   for (let d = 1; d <= days; d++) {
-    const ds = `${y}-${pad(m + 1)}-${pad(d)}`;
+    const ds = prefix + pad(d);
     const c = counts[ds]?.size || 0;
+    const note = db.dayNotes[ds];
     if (c) trainDays++;
-    html += `<div class="day${c ? ' has' : ''}${ds === today ? ' today' : ''}" data-date="${ds}">${d}${c ? `<small>${c}種目</small>` : ''}</div>`;
+    if (note) noteDays++;
+    const cls = ['day', c && 'has', note && 'noted', ds === today && 'today', ds === calSelected && 'selected'].filter(Boolean).join(' ');
+    const sub = c ? `${c}種目` : note ? (note.reason || 'メモ') : '';
+    html += `<button type="button" class="${cls}" data-date="${ds}" aria-pressed="${ds === calSelected}">
+      <span class="dnum">${d}</span>${sub ? `<small>${esc(sub)}</small>` : ''}${note ? '<i class="note-dot" aria-label="メモあり"></i>' : ''}</button>`;
   }
   const cal = $('#calendar');
   cal.innerHTML = html;
-  $('#cal-title').textContent += `（${trainDays}日）`;
+  $('#cal-title').textContent = `${y}年${m + 1}月`;
+  $('#cal-sub').textContent = `トレーニング ${trainDays}日${noteDays ? ` / メモ ${noteDays}日` : ''}`;
   cal.querySelectorAll('[data-date]').forEach((el) => el.addEventListener('click', () => {
-    logDate.value = el.dataset.date;
-    renderBodyweight();
-    renderDay();
-    showTab('log');
+    calSelected = el.dataset.date;
+    renderCalendar();
+    $('#day-panel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }));
+  renderDayPanel();
+  renderMonthNotes(prefix);
+}
+
+/** 選んだ日のメモ欄 */
+function renderDayPanel() {
+  const panel = $('#day-panel');
+  panel.hidden = !calSelected;
+  if (!calSelected) return;
+  const ds = calSelected;
+  const note = db.dayNotes[ds] || {};
+  const recs = db.records.filter((r) => r.date === ds);
+  const exCount = new Set(recs.map((r) => r.exerciseId)).size;
+  $('#dp-date').textContent = `${fmtDate(ds)} ${ds.slice(0, 4)}`;
+  $('#dp-summary').textContent = recs.length ? `${exCount}種目を記録` : 'トレーニングの記録なし';
+  $('#dp-reasons').innerHTML = NOTE_REASONS.map((r) =>
+    `<button type="button" class="chip${note.reason === r ? ' active' : ''}" data-reason="${esc(r)}" aria-pressed="${note.reason === r}">${esc(r)}</button>`).join('');
+  $('#dp-text').value = note.text || '';
+  $('#dp-delete').hidden = !db.dayNotes[ds];
+  $('#dp-open').textContent = recs.length ? 'この日の記録を見る' : 'この日の記録をつける';
+}
+$('#dp-reasons').addEventListener('click', (e) => {
+  const c = e.target.closest('[data-reason]');
+  if (!c) return;
+  const on = !c.classList.contains('active');
+  $$('#dp-reasons .chip').forEach((x) => { x.classList.remove('active'); x.setAttribute('aria-pressed', 'false'); });
+  if (on) { c.classList.add('active'); c.setAttribute('aria-pressed', 'true'); }
+});
+$('#dp-save').addEventListener('click', () => {
+  if (!calSelected) return;
+  const reason = $('#dp-reasons .chip.active')?.dataset.reason || '';
+  const text = $('#dp-text').value.trim();
+  if (!reason && !text) {
+    delete db.dayNotes[calSelected];
+    toast('メモが空のため削除しました');
+  } else {
+    db.dayNotes[calSelected] = { reason, text };
+    toast('メモを保存しました');
+  }
+  persist();
+  renderHistory();
+  renderDay();
+});
+$('#dp-delete').addEventListener('click', async () => {
+  if (!calSelected || !db.dayNotes[calSelected]) return;
+  if (!(await askConfirm(`${fmtDate(calSelected)} のメモを削除しますか？`))) return;
+  delete db.dayNotes[calSelected];
+  persist();
+  renderHistory();
+  renderDay();
+  toast('メモを削除しました');
+});
+$('#dp-open').addEventListener('click', () => {
+  if (!calSelected) return;
+  logDate.value = calSelected;
+  renderBodyweight();
+  renderDay();
+  showTab('log');
+});
+
+/** 表示中の月のメモ一覧（休んだ理由をあとで振り返る用） */
+function renderMonthNotes(prefix) {
+  const list = Object.entries(db.dayNotes).filter(([d]) => d.startsWith(prefix)).sort(([a], [b]) => (a < b ? -1 : 1));
+  const box = $('#month-notes');
+  if (!list.length) { box.innerHTML = '<div class="empty">この月のメモはまだありません</div>'; return; }
+  const reasonCount = {};
+  list.forEach(([, n]) => { if (n.reason) reasonCount[n.reason] = (reasonCount[n.reason] || 0) + 1; });
+  const summary = Object.entries(reasonCount).sort((a, b) => b[1] - a[1]).map(([r, n]) => `${esc(r)} ${n}日`).join(' / ');
+  box.innerHTML = (summary ? `<p class="hint">${summary}</p>` : '') + list.map(([d, n]) => `
+    <button type="button" class="note-item" data-note-date="${d}">
+      <span class="note-date">${fmtDate(d)}</span>${noteHtml(n)}
+    </button>`).join('');
+  box.querySelectorAll('[data-note-date]').forEach((el) => el.addEventListener('click', () => {
+    calSelected = el.dataset.noteDate;
+    renderCalendar();
+    $('#day-panel').scrollIntoView({ behavior: 'smooth', block: 'center' });
   }));
 }
-$('#cal-prev').addEventListener('click', () => { calMonth.setMonth(calMonth.getMonth() - 1); renderCalendar(); });
-$('#cal-next').addEventListener('click', () => { calMonth.setMonth(calMonth.getMonth() + 1); renderCalendar(); });
+$('#cal-prev').addEventListener('click', () => { calMonth.setMonth(calMonth.getMonth() - 1); calSelected = null; renderCalendar(); });
+$('#cal-next').addEventListener('click', () => { calMonth.setMonth(calMonth.getMonth() + 1); calSelected = null; renderCalendar(); });
 
 function renderHistory() {
   renderCalendar();
@@ -846,6 +939,7 @@ function renderHistory() {
     if (r.date !== lastDate) {
       const bw = db.bodyweights[r.date];
       html += `<div class="date-head">${fmtDate(r.date)} ${r.date.slice(0, 4)}${bw ? `　体重 ${fmtNum(bw)}kg` : ''}</div>`;
+      if (db.dayNotes[r.date]) html += noteHtml(db.dayNotes[r.date]);
       lastDate = r.date;
     }
     html += recordHtml(r, prIds);
@@ -1463,7 +1557,7 @@ async function restoreFrom(data) {
     danger: true,
   });
   if (!ok) return;
-  db = migrate({ exercises: data.exercises, records: data.records, bodyweights: data.bodyweights || {} });
+  db = migrate({ exercises: data.exercises, records: data.records, bodyweights: data.bodyweights || {}, dayNotes: data.dayNotes || {} });
   persist();
   refreshAll();
   toast('復元しました');
@@ -1476,7 +1570,7 @@ $('#btn-paste-import').addEventListener('click', async () => {
 });
 $('#btn-reset').addEventListener('click', async () => {
   if (!(await askConfirm('すべての記録とマイメニューを削除します。元に戻せません。よろしいですか？', 'すべて削除'))) return;
-  db = { exercises: defaultExercises(), records: [], bodyweights: {} };
+  db = { exercises: defaultExercises(), records: [], bodyweights: {}, dayNotes: {} };
   persist();
   try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
   clearForm();

@@ -76,6 +76,7 @@
 
       <div class="card">
         <h2>この日の記録</h2>
+        <div id="day-note"></div>
         <div id="day-summary" class="summary"></div>
         <div id="day-records"></div>
       </div>
@@ -120,12 +121,27 @@
     <section id="tab-history" class="tab">
       <div class="card">
         <div class="cal-head">
-          <button class="btn ghost" id="cal-prev">‹</button>
-          <h2 id="cal-title"></h2>
-          <button class="btn ghost" id="cal-next">›</button>
+          <button class="btn ghost" id="cal-prev" aria-label="前の月">‹</button>
+          <div class="cal-title-wrap"><h2 id="cal-title"></h2><span id="cal-sub" class="hint"></span></div>
+          <button class="btn ghost" id="cal-next" aria-label="次の月">›</button>
         </div>
         <div id="calendar" class="calendar"></div>
-        <p class="hint">日付をタップするとその日の記録画面へ移動します</p>
+        <p class="hint">日付をタップすると、その日のメモ（休んだ理由など）を書けます</p>
+        <div id="day-panel" class="day-panel" hidden>
+          <div class="day-panel-head"><b id="dp-date"></b><span id="dp-summary" class="hint"></span></div>
+          <div class="chip-row" id="dp-reasons" aria-label="理由"></div>
+          <label for="dp-text" class="sr-only">メモ</label>
+          <textarea id="dp-text" rows="3" maxlength="300" placeholder="例: 残業で行けなかった／風邪気味なので休養"></textarea>
+          <div class="row">
+            <button type="button" class="btn primary grow" id="dp-save">メモを保存</button>
+            <button type="button" class="btn ghost" id="dp-delete">削除</button>
+          </div>
+          <button type="button" class="btn secondary wide" id="dp-open">この日の記録をつける</button>
+        </div>
+      </div>
+      <div class="card">
+        <h2>この月のメモ</h2>
+        <div id="month-notes"></div>
       </div>
       <div class="card">
         <div class="row">

@@ -214,7 +214,7 @@ input[type="checkbox"] { width: auto; display: inline; margin: 0; }
 /* calendar */
 .cal-head { display: flex; align-items: center; justify-content: space-between; }
 .cal-head h2 { margin: 0; }
-.calendar { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-top: 8px; }
+.calendar { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; margin-top: 8px; }
 .calendar .dow { font-size: 11px; color: var(--muted); text-align: center; }
 .calendar .day {
   aspect-ratio: 1; border-radius: 8px; display: flex; flex-direction: column;
@@ -465,3 +465,37 @@ input[type="date"]::-webkit-calendar-picker-indicator { margin-left: 2px; }
 /* ===== 種目名の自由入力 ===== */
 .new-ex { background: var(--bg); border-radius: 10px; padding: 10px 10px 2px; margin: 0 0 10px; }
 .new-ex input, .new-ex select { background: var(--card); }
+
+/* ===== カレンダーのメモ ===== */
+.cal-title-wrap { text-align: center; }
+.cal-title-wrap .hint { display: block; margin: 2px 0 0; }
+.calendar .day { position: relative; font: inherit; font-size: 13px; color: var(--text); padding: 0; min-width: 0; overflow: hidden; }
+.calendar .day.has { color: #fff; }
+.calendar .day .dnum { line-height: 1.1; }
+.calendar .day small { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 2px; }
+.calendar .day.noted:not(.has) { background: color-mix(in srgb, var(--pr) 18%, var(--bg)); }
+.calendar .day.noted:not(.has) small { color: var(--text); opacity: .8; }
+.calendar .day.selected { outline: 2px solid var(--text); outline-offset: 1px; }
+.note-dot { position: absolute; top: 3px; right: 3px; width: 6px; height: 6px; border-radius: 50%; background: var(--pr); }
+.calendar .day.has .note-dot { background: #fff; }
+.day-panel { margin-top: 12px; padding: 12px; border-radius: 10px; background: var(--bg); }
+.day-panel-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.day-panel .chip-row { margin: 0 0 8px; }
+.day-panel textarea {
+  display: block; width: 100%; font: inherit; font-size: 16px; padding: 9px 10px; resize: vertical;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--card); color: var(--text);
+}
+.btn.wide { display: block; width: 100%; }
+.day-note { display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; font-size: 13px; margin: 2px 0 8px; }
+.reason-tag {
+  display: inline-block; font-size: 11px; font-weight: 700; padding: 1px 8px; border-radius: 999px;
+  background: color-mix(in srgb, var(--pr) 22%, transparent); color: var(--text);
+}
+.note-item {
+  display: flex; gap: 10px; align-items: baseline; width: 100%; text-align: left; font: inherit; color: var(--text);
+  background: none; border: none; border-top: 1px solid var(--border); padding: 10px 0 2px; cursor: pointer;
+}
+.note-item:first-of-type { border-top: none; }
+.note-date { flex-shrink: 0; font-size: 13px; font-weight: 700; min-width: 64px; }
+.note-item .day-note { margin: 0; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
